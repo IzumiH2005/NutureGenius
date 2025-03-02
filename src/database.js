@@ -40,7 +40,7 @@ const db = {
     getAllUsers() {
         return Array.from(users.entries()).map(([id, data]) => ({
             id,
-            username: data.username || `User_${id}`,
+            username: data.username || `User_${data.username || id}`,
             ...data
         }));
     },
@@ -117,7 +117,7 @@ const db = {
 
     // Stats management
     saveStats(userId, username, testType, stats) {
-        console.log(`Attempting to save stats for user ${username} (${userId})`);
+        console.log(`Saving stats for user ${username} (${userId})`);
 
         // Get existing user data or create new entry
         const userData = users.get(userId) || { stats: {} };

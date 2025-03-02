@@ -177,7 +177,6 @@ async function showStats(bot, chatId, username) {
     console.log(`Showing stats for user ${username}`);
     const stats = db.getStats(chatId);
     const userData = db.getUser(chatId);
-    const displayUsername = userData?.username || username || `User_${chatId}`;
 
     if (!stats) {
         await bot.sendMessage(chatId,
@@ -192,7 +191,7 @@ async function showStats(bot, chatId, username) {
 
     let statsMessage = "━━━━━━━━━━━━━━━━━━━━━━━━\n";
     statsMessage += "📊 𝗦𝗧𝗔𝗧𝗜𝗦𝗧𝗜𝗤𝗨𝗘𝗦\n\n";
-    statsMessage += `𝗨𝗧𝗜𝗟𝗜𝗦𝗔𝗧𝗘𝗨𝗥: ${displayUsername}\n\n`;
+    statsMessage += `𝗨𝗧𝗜𝗟𝗜𝗦𝗔𝗧𝗘𝗨𝗥: ${username}\n\n`;
 
     if (stats.precision) {
         statsMessage += "🎯 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗣𝗥É𝗖𝗜𝗦𝗜𝗢𝗡\n";
@@ -235,7 +234,7 @@ async function showUserList(bot, chatId) {
 
     const keyboard = {
         inline_keyboard: users.map(user => [{
-            text: user.username || `User_${user.id}`,
+            text: user.username,
             callback_data: `user_stats_${user.id}`
         }])
     };
@@ -288,28 +287,32 @@ async function startSpeedTest(bot, chatId) {
     // Sauvegarder le username immédiatement
     db.saveUser(chatId, { username });
 
-    // Tentatives de génération avec Gemini et fallback sur les noms
-    for (let i = 0; i < desiredQuestions; i++) {
+    // Limiter le nombre de requêtes Gemini entre 3 et 5
+    const geminiRequests = Math.floor(Math.random() * 3) + 3; // Entre 3 et 5 requêtes
+    console.log(`Will make ${geminiRequests} Gemini requests`);
+
+    // Remplir avec des noms au début
+    for (let i = 0; i < desiredQuestions - geminiRequests; i++) {
+        const randomName = names[Math.floor(Math.random() * names.length)];
+        testTexts.push(randomName);
+    }
+
+    // Ajouter les textes Gemini aux positions aléatoires
+    for (let i = 0; i < geminiRequests; i++) {
         try {
-            // Alterner entre Gemini et noms de la base de données
-            if (i % 2 === 0) {
-                console.log(`Tentative de génération Gemini pour la question ${i + 1}`);
-                const text = await gemini.generateText();
-                if (text) {
-                    console.log(`Texte Gemini généré: ${text}`);
-                    testTexts.push(text);
-                    continue;
-                }
+            const text = await gemini.generateText();
+            if (text) {
+                // Insérer à une position aléatoire
+                const position = Math.floor(Math.random() * (testTexts.length + 1));
+                testTexts.splice(position, 0, text);
+            } else {
+                // Fallback sur un nom si la génération échoue
+                const randomName = names[Math.floor(Math.random() * names.length)];
+                testTexts.push(randomName);
             }
-            // Fallback sur les noms si Gemini échoue ou pour alterner
-            const randomName = names[Math.floor(Math.random() * names.length)];
-            console.log(`Utilisation du nom: ${randomName}`);
-            testTexts.push(randomName);
         } catch (error) {
             console.error('Erreur lors de la génération du texte:', error);
-            // Fallback sur les noms en cas d'erreur
             const randomName = names[Math.floor(Math.random() * names.length)];
-            console.log(`Fallback sur le nom: ${randomName}`);
             testTexts.push(randomName);
         }
     }
