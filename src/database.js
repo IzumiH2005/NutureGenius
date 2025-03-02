@@ -25,7 +25,7 @@ function updateSessionActivity(userId) {
     const session = userSessions.get(userId);
     if (session) {
         session.lastActivity = Date.now();
-        console.log(`[Session Manager] Updated activity for user ${userId}, session:`, session);
+        console.log(`[Session Manager] Updated activity for user ${userId}`);
     } else {
         console.log(`[Session Manager] No session found for user ${userId}, creating new one`);
         return createUserSession(userId);
@@ -33,12 +33,27 @@ function updateSessionActivity(userId) {
     return session;
 }
 
+// Fonction utilitaire pour découper le texte en phrases
+function splitTextIntoSentences(text) {
+    return text
+        .split(/[.!?]+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+}
+
+// Fonction utilitaire pour découper une phrase en mots
+function splitSentenceIntoWords(sentence) {
+    return sentence
+        .split(/\s+/)
+        .map(w => w.trim())
+        .filter(w => w.length > 0);
+}
+
 // Database operations
 const db = {
     getUserSession(userId) {
         let session = userSessions.get(userId);
         if (!session) {
-            console.log(`[Session Manager] Creating new session for user ${userId}`);
             session = createUserSession(userId);
         }
         updateSessionActivity(userId);
@@ -47,20 +62,46 @@ const db = {
 
     // Custom text management
     saveCustomText(userId, textName, content) {
-        console.log(`[Custom Text] Attempting to save text for user ${userId}`);
+        console.log(`[Custom Text] Saving text "${textName}" for user ${userId}`);
+
+        // Découper le texte en phrases
+        const sentences = splitTextIntoSentences(content);
+        console.log(`[Custom Text] Split into ${sentences.length} sentences`);
+
+        // Pour chaque phrase, découper en mots
+        const processedContent = sentences.map(sentence => ({
+            sentence: sentence,
+            words: splitSentenceIntoWords(sentence)
+        }));
+
         const textId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        customTexts.set(textId, {
+        const textData = {
+            id: textId,
             name: textName,
-            content,
+            content: processedContent,
+            rawContent: content,
             createdBy: userId,
             createdAt: Date.now()
+        };
+
+        customTexts.set(textId, textData);
+        console.log(`[Custom Text] Saved text with ID ${textId}:`, {
+            name: textName,
+            sentenceCount: processedContent.length,
+            totalWords: processedContent.reduce((sum, s) => sum + s.words.length, 0)
         });
-        console.log(`[Custom Text] Successfully saved text: ${textName} by user ${userId} with ID ${textId}`);
+
         return textId;
     },
 
     getCustomText(textId) {
-        return customTexts.get(textId);
+        console.log(`[Custom Text] Retrieving text ${textId}`);
+        const text = customTexts.get(textId);
+        if (!text) {
+            console.log(`[Custom Text] Text ${textId} not found`);
+            return null;
+        }
+        return text;
     },
 
     getAllCustomTexts() {
@@ -81,7 +122,6 @@ const db = {
                 createdAt: text.createdAt
             }));
     },
-
     saveUser(userId, data) {
         createUserSession(userId);
         updateSessionActivity(userId);
@@ -96,10 +136,7 @@ const db = {
     },
 
     getUser(userId) {
-        updateSessionActivity(userId);
-        const userData = users.get(userId);
-        console.log(`Retrieving user data for ${userId}:`, userData);
-        return userData;
+        return users.get(userId);
     },
 
     getUserByUsername(username) {
@@ -120,25 +157,7 @@ const db = {
         const session = createUserSession(userId);
         updateSessionActivity(userId);
 
-        // Si un test existe déjà et n'est pas terminé, on le conserve
-        const existingTest = activeTests.get(userId);
-        if (existingTest && existingTest.currentIndex < existingTest.words.length) {
-            console.log(`Preserving existing test for user ${userId}`);
-            return;
-        }
-
-        // Nettoyer l'ancien test s'il existe
-        if (existingTest) {
-            if (existingTest.countdownInterval) {
-                clearInterval(existingTest.countdownInterval);
-            }
-            activeTests.delete(userId);
-        }
-
-        // Sauvegarder le username immédiatement
-        this.saveUser(userId, { username });
-
-        console.log(`Starting ${testType} test for user ${username} (${userId})`);
+        console.log(`[Test Manager] Starting ${testType} test for user ${username} (${userId}) with ${words.length} words`);
 
         const newTest = {
             type: testType,
@@ -151,34 +170,42 @@ const db = {
             totalTests: words.length,
             username,
             countdownInterval: null,
-            sessionId: Date.now() // Unique session identifier
+            sessionId: Date.now()
         };
 
         activeTests.set(userId, newTest);
         session.currentTest = newTest;
+
+        console.log(`[Test Manager] Test created:`, {
+            type: testType,
+            wordCount: words.length,
+            username
+        });
     },
 
     getActiveTest(userId) {
         updateSessionActivity(userId);
-        const session = userSessions.get(userId);
-        if (!session) return null;
-
-        return activeTests.get(userId);
+        const test = activeTests.get(userId);
+        if (test) {
+            console.log(`[Test Manager] Retrieved active test for user ${userId}:`, {
+                type: test.type,
+                progress: `${test.currentIndex}/${test.totalTests}`
+            });
+        }
+        return test;
     },
 
     updateTestResult(userId, result) {
         updateSessionActivity(userId);
         const test = activeTests.get(userId);
         if (test) {
-            console.log(`Adding result for ${test.username}:`, result);
+            console.log(`[Test Manager] Adding result for ${test.username}:`, result);
             test.results.push(result);
             if (result.success) {
                 test.successCount++;
-                console.log(`Success count increased to ${test.successCount}`);
             }
             if (result.errors) {
                 test.errors += result.errors;
-                console.log(`Errors count increased to ${test.errors}`);
             }
         }
     },
@@ -193,20 +220,19 @@ const db = {
             test.countdownInterval = null;
         }
 
-        // Ne supprime le test que s'il est terminé
         if (test && test.currentIndex >= test.words.length) {
             activeTests.delete(userId);
             if (session) {
                 session.currentTest = null;
             }
-            console.log(`Test completed and removed for user ${test?.username} (${userId})`);
+            console.log(`[Test Manager] Test completed for user ${test?.username} (${userId})`);
         }
         return test;
     },
 
     saveStats(userId, username, testType, stats) {
         updateSessionActivity(userId);
-        console.log(`Saving stats for user ${username} (${userId})`);
+        console.log(`[Stats Manager] Saving stats for user ${username} (${userId})`);
 
         const userData = users.get(userId) || { stats: {} };
         userData.username = username;
@@ -222,19 +248,19 @@ const db = {
         };
 
         users.set(userId, userData);
-        console.log(`Stats saved for user ${username} (${userId}):`, stats);
+        console.log(`[Stats Manager] Stats saved:`, stats);
     },
 
     getStats(userId) {
         updateSessionActivity(userId);
         const userData = users.get(userId);
-        console.log(`Retrieving stats for user ${userId}:`, userData);
+        console.log(`[Stats Manager] Retrieved stats for user ${userId}:`, userData?.stats);
         return userData ? userData.stats : null;
     },
 
     getStatsByUsername(username) {
         const user = this.getUserByUsername(username);
-        console.log(`Getting stats for username ${username}:`, user?.stats);
+        console.log(`[Stats Manager] Retrieved stats for username ${username}:`, user?.stats);
         return user ? user.stats : null;
     },
 
@@ -247,7 +273,7 @@ const db = {
             ...stats,
             timestamp: Date.now()
         });
-        console.log(`Stats saved for text ${textId} by user ${userId}:`, stats);
+        console.log(`[Custom Text Stats] Saved stats for text ${textId} by user ${userId}:`, stats);
     },
 
     getCustomTextStats(textId) {
@@ -313,10 +339,10 @@ function cleanupActiveTests() {
             }
 
             activeTests.delete(userId);
-            console.log(`Cleaned up completed test for user ${userId}`);
+            console.log(`[Test Manager] Cleaned up completed test for user ${userId}`);
         }
     });
-    console.log('Cleanup of completed tests finished');
+    console.log('[Test Manager] Cleanup of completed tests finished');
 }
 
 module.exports = db;

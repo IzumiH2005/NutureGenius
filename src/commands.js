@@ -811,14 +811,17 @@ async function handleCustomTextInput(bot, msg) {
         return false;
     }
 
-    console.log(`[Custom Text] Processing input in state: ${session.customTextState}`);
+    console.log(`[Custom Text] Processing input in state: ${session.customTextState}`, {
+        session: session,
+        messageLength: msg.text.length
+    });
 
     try {
         switch (session.customTextState) {
             case 'awaiting_text':
                 if (msg.text.length < 100) {
                     console.log(`[Custom Text] Text too short: ${msg.text.length} chars`);
-                    await bot.sendMessage(chatId, 
+                    await bot.sendMessage(chatId,
                         "⚠️ Le texte est trop court. Il doit contenir au moins 100 caractères.\n" +
                         `Longueur actuelle : ${msg.text.length} caractères.`);
                     return true;
@@ -828,7 +831,7 @@ async function handleCustomTextInput(bot, msg) {
                 session.customTextState = 'awaiting_name';
                 console.log(`[Custom Text] Saved text, awaiting name. Text length: ${msg.text.length}`);
 
-                await bot.sendMessage(chatId, 
+                await bot.sendMessage(chatId,
                     "📝 Donnez un nom à votre texte :\n" +
                     "(Ce nom sera visible par tous les utilisateurs)");
                 return true;
@@ -836,26 +839,46 @@ async function handleCustomTextInput(bot, msg) {
             case 'awaiting_name':
                 if (!msg.text || msg.text.length > 50) {
                     console.log(`[Custom Text] Invalid name length: ${msg.text?.length}`);
-                    await bot.sendMessage(chatId, 
+                    await bot.sendMessage(chatId,
                         "⚠️ Le nom doit faire entre 1 et 50 caractères.");
+                    return true;
+                }
+
+                if (!session.pendingCustomText) {
+                    console.error(`[Custom Text] No pending text found for user ${chatId}`);
+                    await bot.sendMessagechatId,
+                        "Une erreur est survenue. Veuillez recommencer l'enregistrement du texte.");
+                    session.customTextState = null;
                     return true;
                 }
 
                 console.log(`[Custom Text] Saving text with name: ${msg.text}`);
                 const textId = db.saveCustomText(chatId, msg.text, session.pendingCustomText);
 
+                // Vérification immédiate
+                const savedText = db.getCustomText(textId);
+                if (!savedText || !savedText.content) {
+                    console.error(`[Custom Text] Failed to verify saved text ${textId}`);
+                    await bot.sendMessage(chatId,
+                        "Une erreur est survenue lors de l'enregistrement. Veuillez réessayer.");
+                    session.customTextState = null;
+                    session.pendingCustomText = null;
+                    return true;
+                }
+
                 // Reset session state
                 session.customTextState = null;
                 session.pendingCustomText = null;
 
-                await bot.sendMessage(chatId,
-                    "✅ 𝗧𝗘𝗫𝗧𝗘 𝗘𝗡𝗥𝗘𝗚𝗜𝗦𝗧𝗥É !\n\n" +
+                const successMessage = "✅ 𝗧𝗘𝗫𝗧𝗘 𝗘𝗡𝗥𝗘𝗚𝗜𝗦𝗧𝗥É !\n\n" +
                     "━━━━━━━━━━━━━━━━━━━━━━━━\n\n" +
                     "Vous pouvez maintenant :\n" +
                     "• Le retrouver dans 'Mes textes'\n" +
                     "• Le voir dans 'Textes préenregistrés'\n" +
-                    "• Commencer l'entraînement dessus\n\n" +
-                    "━━━━━━━━━━━━━━━━━━━━━━━━");
+                    "• Commencerl'entraînement dessus\n\n" +
+                    "━━━━━━━━━━━━━━━━━━━━━━━━";
+
+                await bot.sendMessage(chatId, successMessage);
 
                 const keyboard = {
                     inline_keyboard: [
@@ -872,7 +895,7 @@ async function handleCustomTextInput(bot, msg) {
         console.error(`[Custom Text] Error processing input:`, error);
         session.customTextState = null;
         session.pendingCustomText = null;
-        await bot.sendMessage(chatId, 
+        await bot.sendMessage(chatId,
             "Une erreur est survenue lors de l'enregistrement du texte.\n" +
             "Veuillez réessayer.");
         return true;
@@ -997,31 +1020,48 @@ async function showTextRanking(bot, chatId, textId) {
     await bot.sendMessage(chatId, message, { reply_markup: keyboard });
 }
 
+// Modification de la fonction startCustomTest
 async function startCustomTest(bot, chatId, textId) {
-    const text = db.getCustomText(textId);
-    if (!text) {
-        await bot.sendMessage(chatId, "Texte non trouvé.");
+    console.log(`[Custom Test] Starting test for text ${textId} by user ${chatId}`);
+
+    const customText = db.getCustomText(textId);
+    if (!customText || !customText.content) {
+        console.error(`[Custom Test] Text not found or invalid for ID ${textId}`, {
+            textExists: !!customText,
+            hasContent: customText?.content ? true : false
+        });
+        await bot.sendMessage(chatId, "⚠️ Texte introuvable ou invalide. Veuillez réessayer.");
         return;
     }
 
-    const keyboard = {
-        inline_keyboard: [
-            [
-                { text: "😊 Facile", callback_data: `custom_difficulty_${textId}_easy` },
-                { text: "😎 Normal", callback_data: `custom_difficulty_${textId}_normal` },
-                { text: "😈 Challenge", callback_data: `custom_difficulty_${textId}_hard` }
-            ],
-            [{ text: "⬅️ Retour", callback_data: "show_custom_menu" }]
-        ]
-    };
+    console.log(`[Custom Test] Found text: "${customText.name}" with ${customText.content.length} sentences`);
+    const username = (await bot.getChat(chatId)).username || `User_${chatId}`;
+
+    // On utilise directement les phrases préparées lors de l'enregistrement
+    const sentences = customText.content;
+    if (sentences.length === 0) {
+        console.error(`[Custom Test] No valid sentences found in text ${textId}`);
+        await bot.sendMessage(chatId, "⚠️ Le texte ne contient pas de phrases valides.");
+        return;
+    }
+
+    // Limiter à 10 phrases maximum pour le test
+    const testSentences = sentences.slice(0, 10);
+    console.log(`[Custom Test] Prepared ${testSentences.length} sentences for testing`, {
+        firstSentence: testSentences[0].sentence,
+        wordCount: testSentences[0].words.length
+    });
+
+    // Démarrer le test avec les mots de la première phrase
+    db.startTest(chatId, 'custom', testSentences[0].words, username);
+    console.log(`[Custom Test] Test started with ${testSentences[0].words.length} words from first sentence`);
 
     await bot.sendMessage(chatId,
-        "🎯 𝗖𝗛𝗢𝗜𝗫 𝗗𝗘 𝗟𝗔 𝗗𝗜𝗙𝗙𝗜𝗖𝗨𝗟𝗧É\n\n" +
-        "• Facile : Objectif rang C\n" +
-        "• Normal : Objectif rang B-A\n" +
-        "• Challenge : Objectif rang S\n\n" +
-        "Choisissez votre niveau :",
-        { reply_markup: keyboard });
+        "📝 𝗧𝗘𝗦𝗧 𝗣𝗘𝗥𝗦𝗢𝗡𝗡𝗔𝗟𝗜𝗦É\n\n" +
+        `Texte : "${customText.name}"\n` +
+        `Nombre de phrases à tester : ${testSentences.length}\n` +
+        `Mots dans la première phrase : ${testSentences[0].words.length}\n\n` +
+        "Écrivez 'next' pour commencer.");
 }
 
 async function startCustomTestWithDifficulty(bot, chatId, textId, difficulty) {

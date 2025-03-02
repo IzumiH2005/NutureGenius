@@ -233,13 +233,14 @@ bot.on('callback_query', async (query) => {
     try {
         // Custom text related callbacks
         if (query.data.startsWith('start_custom_')) {
-            console.log(`[Callback] Starting custom test with ID: ${query.data.split('_')[2]}`);
-            const textId = query.data.split('_')[2];
+            console.log(`[Callback] Starting custom test`);
+            const textId = query.data.substring('start_custom_'.length);
+            console.log(`[Callback] Extracted text ID: ${textId}`);
             await commands.startCustomTest(bot, chatId, textId);
         }
         else if (query.data.startsWith('ranking_custom_')) {
-            console.log(`[Callback] Showing ranking for text ID: ${query.data.split('_')[2]}`);
-            const textId = query.data.split('_')[2];
+            console.log(`[Callback] Showing ranking for text`);
+            const textId = query.data.substring('ranking_custom_'.length);
             await commands.showTextRanking(bot, chatId, textId);
         }
         else if (query.data.startsWith('custom_difficulty_')) {
@@ -432,6 +433,32 @@ handleCommand(/\/custom/, async (msg) => {
     await commands.showCustomMenu(bot, msg.chat.id);
 });
 
+
+// Handle /debug_texts command (temporary)
+handleCommand(/\/debug_texts/, async (msg) => {
+    const chatId = msg.chat.id;
+    console.log(`[Debug] Showing all custom texts for user ${chatId}`);
+
+    const allTexts = db.getAllCustomTexts();
+    console.log(`[Debug] Found ${allTexts.length} texts:`, allTexts);
+
+    let debugMessage = "📝 𝗧𝗘𝗫𝗧𝗘𝗦 𝗘𝗡𝗥𝗘𝗚𝗜𝗦𝗧𝗥É𝗦:\n\n";
+
+    if (allTexts.length === 0) {
+        debugMessage += "Aucun texte enregistré.";
+    } else {
+        for (const text of allTexts) {
+            const fullText = db.getCustomText(text.id);
+            debugMessage += `ID: ${text.id}\n`;
+            debugMessage += `Nom: ${text.name}\n`;
+            debugMessage += `Contenu (preview): ${fullText.content.substring(0, 50)}...\n`;
+            debugMessage += `Créé par: ${text.createdBy}\n`;
+            debugMessage += "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+        }
+    }
+
+    await bot.sendMessage(chatId, debugMessage);
+});
 
 // Process message queues periodically with enhanced error handling
 setInterval(() => {
