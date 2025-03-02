@@ -23,44 +23,35 @@ async function generateText() {
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); 
 
-        const contexts = [
-            "dans un café parisien",
-            "pendant une randonnée en montagne",
-            "lors d'une soirée d'été",
-            "dans un ancien temple japonais",
-            "sur une plage déserte",
-            "dans une bibliothèque silencieuse",
-            "pendant un voyage en train",
-            "dans un marché animé",
-            "sous la pluie d'automne",
-            "dans un jardin zen"
-        ];
-
         const prompts = [
-            "Générer une citation inspirante {context}",
-            "Donner un proverbe philosophique {context}",
-            "Écrire un mot ou groupe de mots évocateur {context}",
-            "Donner une expression poétique {context}",
-            "Générer une phrase descriptive {context}"
+            "Génère une citation inspirante dans un contexte de ton choix. Le contexte doit être évocateur et la citation doit être profonde et mémorable.",
+            "Crée un proverbe philosophique original dans un contexte que tu choisis librement. Le proverbe doit être sage et réfléchi.",
+            "Propose un mot ou groupe de mots évocateur dans un contexte que tu imagines. L'expression doit être poétique et significative.",
+            "Compose un adage dans un contexte de ton choix. L'adage doit être porteur de sagesse et d'enseignement.",
+            "Écris une phrase descriptive dans un environnement que tu sélectionnes. La description doit être vivante et immersive.",
+            "Formule une expression poétique dans un cadre que tu détermines. L'expression doit être belle et touchante.",
+            "Invente un dicton dans une situation de ton choix. Le dicton doit être mémorable et pertinent."
         ];
 
-        const selectedContext = contexts[Math.floor(Math.random() * contexts.length)];
-        const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)]
-            .replace('{context}', selectedContext);
+        const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)];
 
-        console.log(`Generating text with prompt: ${selectedPrompt}`);
+        console.log(`Début de la génération avec le prompt: ${selectedPrompt}`);
+        console.log('Appel de l\'API Gemini...');
 
         lastCallTime = Date.now();
         const result = await model.generateContent(selectedPrompt);
         const response = await result.response;
         const text = response.text();
 
-        console.log(`Generated text: ${text.substring(0, 50)}...`);
+        console.log(`Texte généré avec succès: "${text.substring(0, 50)}..."`);
 
         // Ensure text isn't too long
-        return text.length > 100 ? text.substring(0, 100) : text;
+        const finalText = text.length > 100 ? text.substring(0, 100) : text;
+        console.log(`Texte final (après troncature si nécessaire): "${finalText}"`);
+
+        return finalText;
     } catch (error) {
-        console.error('Gemini API error:', error);
+        console.error('Erreur lors de la génération du texte:', error);
         return null;
     }
 }
