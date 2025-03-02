@@ -11,14 +11,14 @@ const genAI = new GoogleGenerativeAI(apiKey);
 
 async function generateText() {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.0-pro" }); 
 
         const prompts = [
-            "Generate a random anime quote",
-            "Create a short philosophical statement",
-            "Write a brief proverb",
-            "Generate a random meaningful phrase",
-            "Create a short motivational statement"
+            "Générer une citation aléatoire",
+            "Donner un proverbe au hasard",
+            "Écrire un mot ou groupe de mots",
+            "Donner une expression courte",
+            "Générer une phrase simple"
         ];
 
         const prompt = prompts[Math.floor(Math.random() * prompts.length)];
@@ -29,6 +29,8 @@ async function generateText() {
         const text = response.text();
 
         console.log(`Generated text: ${text.substring(0, 50)}...`);
+
+        // Ensure text isn't too long
         return text.length > 100 ? text.substring(0, 100) : text;
     } catch (error) {
         console.error('Gemini API error:', error);

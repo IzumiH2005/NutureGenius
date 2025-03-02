@@ -252,13 +252,31 @@ async function startPrecisionTest(bot, chatId) {
 
 async function startSpeedTest(bot, chatId) {
     const testTexts = [];
-    for (let i = 0; i < 10; i++) {
-        const useGemini = Math.random() > 0.5;
-        if (useGemini) {
-            const text = await gemini.generateText();
-            if (text) testTexts.push(text);
-        } else {
-            testTexts.push(names[Math.floor(Math.random() * names.length)]);
+    const desiredQuestions = 10;
+
+    // Tentatives de génération avec Gemini et fallback sur les noms
+    for (let i = 0; i < desiredQuestions; i++) {
+        try {
+            // Alterner entre Gemini et noms de la base de données
+            if (i % 2 === 0) {
+                console.log(`Tentative de génération Gemini pour la question ${i + 1}`);
+                const text = await gemini.generateText();
+                if (text) {
+                    console.log(`Texte Gemini généré: ${text}`);
+                    testTexts.push(text);
+                    continue;
+                }
+            }
+            // Fallback sur les noms si Gemini échoue ou pour alterner
+            const randomName = names[Math.floor(Math.random() * names.length)];
+            console.log(`Utilisation du nom: ${randomName}`);
+            testTexts.push(randomName);
+        } catch (error) {
+            console.error('Erreur lors de la génération du texte:', error);
+            // Fallback sur les noms en cas d'erreur
+            const randomName = names[Math.floor(Math.random() * names.length)];
+            console.log(`Fallback sur le nom: ${randomName}`);
+            testTexts.push(randomName);
         }
     }
 
@@ -329,23 +347,38 @@ async function startTrainingWithRank(bot, chatId, type, rank) {
 
 async function generateSpeedTestWords() {
     const testTexts = [];
-    for (let i = 0; i < 10; i++) {
-        const useGemini = Math.random() > 0.5;
-        if (useGemini) {
-            const text = await gemini.generateText();
-            if (text) testTexts.push(text);
-        } else {
+    const desiredQuestions = 10;
+
+    // Tentatives de génération avec Gemini et fallback sur les noms
+    for (let i = 0; i < desiredQuestions; i++) {
+        try {
+            // Alterner entre Gemini et noms de la base de données
+            if (i % 2 === 0) {
+                const text = await gemini.generateText();
+                if (text) {
+                    testTexts.push(text);
+                    continue;
+                }
+            }
+            // Fallback sur les noms si Gemini échoue ou pour alterner
+            testTexts.push(names[Math.floor(Math.random() * names.length)]);
+        } catch (error) {
+            console.error('Erreur lors de la génération du texte:', error);
+            // Fallback sur les noms en cas d'erreur
             testTexts.push(names[Math.floor(Math.random() * names.length)]);
         }
     }
     return testTexts;
 }
 
+// Dans la fonction handleTestResponse, modifions la vérification de 'next'
 async function handleTestResponse(bot, msg) {
     const test = db.getActiveTest(msg.chat.id);
     if (!test) return;
 
-    if (msg.text.toLowerCase() === 'next') {
+    // Liste des variations acceptables de "next"
+    const nextCommands = ['next', 'nex', 'newt', 'nexr', 'nxt'];
+    if (nextCommands.includes(msg.text.toLowerCase())) {
         if (test.currentIndex >= test.words.length) {
             await finishTest(bot, msg.chat.id);
             return;
@@ -407,11 +440,17 @@ async function handleTestResponse(bot, msg) {
     const accuracy = typingTest.calculateAccuracy(currentWord, msg.text);
     const wpm = typingTest.calculateWPM(msg.text, adjustedTime);
 
-    let success = accuracy >= 70;
+    // En mode vitesse, seul le WPM compte pour le succès
+    let success = test.type.includes('speed') ? 
+        wpm >= 20 : // Seuil minimum de WPM pour le mode vitesse
+        accuracy >= 70; // Seuil de précision pour le mode précision
+
     if (test.type.includes('training')) {
         const user = db.getUser(msg.chat.id);
         if (user?.selectedRank) {
-            success = accuracy >= 70 && responseTime <= test.timeAllowed;
+            success = test.type.includes('speed') ?
+                wpm >= 20 && responseTime <= test.timeAllowed :
+                accuracy >= 70 && responseTime <= test.timeAllowed;
         }
     }
 
@@ -426,7 +465,7 @@ async function handleTestResponse(bot, msg) {
 
     // Ajouter l'affichage des stats après chaque mot
     const resultMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
-𝗥É𝗦𝗨𝗟𝗧𝗔𝗧𝗦 :
+RÉСУЛТАТЫ :
 
 🎯 Précision : ${Math.round(accuracy)}%
 ⚡ Vitesse : ${Math.round(wpm)} WPM
