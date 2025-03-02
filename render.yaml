@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: telegram-typing-bot
+    env: node
+    buildCommand: npm install
+    startCommand: node src/bot.js
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+    autoDeploy: true
+    healthCheckPath: /health

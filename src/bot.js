@@ -59,14 +59,14 @@ function addToMessageQueue(chatId, message, options = {}) {
     }
 
     // Vérifier si un message similaire existe déjà dans la queue
-    const isDuplicate = queue.some(item => 
-        item.message === message && 
+    const isDuplicate = queue.some(item =>
+        item.message === message &&
         JSON.stringify(item.options) === JSON.stringify(options)
     );
 
     if (!isDuplicate) {
-        queue.push({ 
-            message, 
+        queue.push({
+            message,
             options,
             timestamp: Date.now(),
             id: Math.random().toString(36).substring(7) // Unique ID for message

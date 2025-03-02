@@ -32,6 +32,7 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "node src/bot.js"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Telegram Bot with Status Page"
@@ -46,7 +47,7 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "node src/bot.js"
-waitForPort = 3000
+waitForPort = 5000
 
 [deployment]
 run = ["sh", "-c", "node src/bot.js"]
@@ -54,3 +55,7 @@ run = ["sh", "-c", "node src/bot.js"]
 [[ports]]
 localPort = 3000
 externalPort = 80
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
