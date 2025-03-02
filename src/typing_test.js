@@ -48,29 +48,30 @@ const calculateAccuracy = (original, typed) => {
     return accuracy;
 };
 
-const getRankFromStats = (wpm, accuracy) => {
-    // Speed weight: 40%, Accuracy weight: 60%
-    const speedScore = wpm;
-    const accuracyScore = accuracy;
-    const totalScore = (speedScore * 0.4) + (accuracyScore * 0.6);
-
-    if (accuracy < 50) return 'D-';
-    if (wpm < 20) return 'D';
-    if (wpm < 25) return 'D+';
-    if (wpm < 30) return 'C-';
-    if (wpm < 35) return 'C';
-    if (wpm < 40) return 'C+';
-    if (wpm < 45) return 'B-';
-    if (wpm < 50) return 'B';
-    if (wpm < 55) return 'B+';
-    if (wpm < 60) return 'A-';
-    if (wpm < 65) return 'A';
-    if (wpm < 70) return 'A+';
-    if (wpm < 75) return 'S-';
-    if (wpm < 80) return 'S';
-    if (wpm < 90) return 'S+';
-    if (wpm < 100) return 'SR';
-    return 'SR+';
+const getRankFromStats = (wpm, accuracy, mode = 'precision') => {
+    if (mode === 'speed') {
+        // Mode vitesse : uniquement basé sur le WPM
+        if (wpm <= 20) return 'D';
+        if (wpm <= 30) return 'C';
+        if (wpm <= 35) return 'C+';
+        if (wpm <= 40) return 'B-';
+        if (wpm <= 45) return 'B';
+        if (wpm <= 50) return 'B+';
+        if (wpm <= 55) return 'A-';
+        if (wpm <= 60) return 'A';
+        if (wpm <= 65) return 'A+';
+        if (wpm <= 70) return 'S';
+        if (wpm <= 75) return 'S+';
+        return 'SR';
+    } else {
+        // Mode précision : prend en compte vitesse et précision
+        if (accuracy < 50) return 'D';
+        if (accuracy < 70 || wpm < 20) return 'C';
+        if (accuracy < 80 || wpm < 30) return 'B';
+        if (accuracy < 90 || wpm < 40) return 'A';
+        if (accuracy < 95 || wpm < 50) return 'S';
+        return 'SR';
+    }
 };
 
 module.exports = {

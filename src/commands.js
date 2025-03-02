@@ -75,14 +75,14 @@ précise comme une lame et rapide comme l'éclair.
 
     try {
         const imagePath = path.join(__dirname, '../attached_assets/4c85c30fcb415b7bea09eaad3db7a35a (1).jpg');
-        await bot.sendPhoto(chatId, imagePath, { 
+        await bot.sendPhoto(chatId, imagePath, {
             caption: menuText,
             reply_markup: keyboard,
             parse_mode: 'Markdown'
         });
     } catch (error) {
         console.error('Error sending menu with image:', error);
-        await bot.sendMessage(chatId, menuText, { 
+        await bot.sendMessage(chatId, menuText, {
             reply_markup: keyboard,
             parse_mode: 'Markdown'
         });
@@ -118,7 +118,7 @@ même à grande vitesse.
         ]
     };
 
-    await bot.sendMessage(chatId, menuText, { 
+    await bot.sendMessage(chatId, menuText, {
         reply_markup: keyboard,
         parse_mode: 'Markdown'
     });
@@ -152,7 +152,7 @@ Un véritable Oni frappe avec la rapidité de l'éclair.
         ]
     };
 
-    await bot.sendMessage(chatId, menuText, { 
+    await bot.sendMessage(chatId, menuText, {
         reply_markup: keyboard,
         parse_mode: 'Markdown'
     });
@@ -163,39 +163,49 @@ async function showStats(bot, chatId, username) {
     const stats = db.getStats(chatId);
 
     if (!stats) {
-        await bot.sendMessage(chatId, "Aucune statistique disponible. Commencez l'entraînement pour obtenir vos stats!");
+        await bot.sendMessage(chatId,
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+            "📊 𝗦𝗧𝗔𝗧𝗜𝗦𝗧𝗜𝗤𝗨𝗘𝗦\n\n" +
+            "Aucune statistique disponible.\n" +
+            "Commencez l'entraînement pour obtenir vos stats!\n" +
+            "━━━━━━━━━━━━━━━━━━━━━━━━"
+        );
         return;
     }
 
-    let statsMessage = `🏯 Gun Park - Shiro Oni\n\nStatistiques de ${username}\n\n`;
+    let statsMessage = "━━━━━━━━━━━━━━━━━━━━━━━━\n";
+    statsMessage += "📊 𝗦𝗧𝗔𝗧𝗜𝗦𝗧𝗜𝗤𝗨𝗘𝗦\n\n";
+    statsMessage += `𝗨𝗧𝗜𝗟𝗜𝗦𝗔𝗧𝗘𝗨𝗥: ${username}\n\n`;
 
     if (stats.precision) {
-        statsMessage += `Test de Précision:\n`;
-        statsMessage += `Vitesse moyenne: ${stats.precision.wpm} WPM\n`;
-        statsMessage += `Précision: ${stats.precision.accuracy}%\n`;
-        statsMessage += `Rang: ${stats.precision.rank}\n\n`;
+        statsMessage += "🎯 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗣𝗥É𝗖𝗜𝗦𝗜𝗢𝗡\n";
+        statsMessage += `⚡ Vitesse: ${stats.precision.wpm} WPM\n`;
+        statsMessage += `📝 Précision: ${stats.precision.accuracy}%\n`;
+        statsMessage += `🏆 Rang: ${stats.precision.rank}\n\n`;
     }
 
     if (stats.speed) {
-        statsMessage += `Test de Vitesse:\n`;
-        statsMessage += `Vitesse moyenne: ${stats.speed.wpm} WPM\n`;
-        statsMessage += `Précision: ${stats.speed.accuracy}%\n`;
-        statsMessage += `Rang: ${stats.speed.rank}\n`;
+        statsMessage += "⚡ 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗩𝗜𝗧𝗘𝗦𝗦𝗘\n";
+        statsMessage += `⚡ Vitesse: ${stats.speed.wpm} WPM\n`;
+        statsMessage += `📝 Précision: ${stats.speed.accuracy}%\n`;
+        statsMessage += `🏆 Rang: ${stats.speed.rank}\n\n`;
     }
 
-    if (stats.precision?.accuracy >= 95 && stats.precision?.wpm >= 75) {
-        statsMessage += `\n🔥 Badge obtenu: 白鬼 (Shiro Oni)`;
+    if (stats.speed?.wpm >= 76) {
+        statsMessage += "🔥 Badge obtenu: 白鬼 (Shiro Oni)";
     }
+
+    statsMessage += "\n━━━━━━━━━━━━━━━━━━━━━━━━";
 
     await bot.sendMessage(chatId, statsMessage);
 }
 
 async function showUserList(bot, chatId) {
-    console.log("Showing user list for admin");
+    console.log(`Showing user list for admin ${chatId}`);
     const users = db.getAllUsers();
 
     if (users.length === 0) {
-        await bot.sendMessage(chatId, 
+        await bot.sendMessage(chatId,
             "━━━━━━━━━━━━━━━━━━━━━━━━\n" +
             "👑 𝗔𝗗𝗠𝗜𝗡𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡\n\n" +
             "Aucun utilisateur enregistré.\n" +
@@ -204,31 +214,26 @@ async function showUserList(bot, chatId) {
         return;
     }
 
-    let userListMessage = "━━━━━━━━━━━━━━━━━━━━━━━━\n";
-    userListMessage += "👑 𝗔𝗗𝗠𝗜𝗡𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡\n\n";
-    userListMessage += "📊 𝗟𝗜𝗦𝗧𝗘 𝗗𝗘𝗦 𝗨𝗧𝗜𝗟𝗜𝗦𝗔𝗧𝗘𝗨𝗥𝗦\n\n";
+    const keyboard = {
+        inline_keyboard: users.map(user => [{
+            text: user.username || `User ${user.id}`,
+            callback_data: `user_stats_${user.id}`
+        }])
+    };
 
-    users.forEach((user, index) => {
-        userListMessage += `${index + 1}. ${user.username || `User ${user.id}`}\n`;
-        if (user.stats) {
-            if (user.stats.precision) {
-                userListMessage += `   📝 Précision: ${user.stats.precision.accuracy}% | ⚡ WPM: ${user.stats.precision.wpm} | 🏆 Rang: ${user.stats.precision.rank}\n`;
-            }
-            if (user.stats.speed) {
-                userListMessage += `   🚀 Vitesse: ${user.stats.speed.accuracy}% | ⚡ WPM: ${user.stats.speed.wpm} | 🏆 Rang: ${user.stats.speed.rank}\n`;
-            }
-        }
-        userListMessage += "\n";
-    });
-
-    userListMessage += "━━━━━━━━━━━━━━━━━━━━━━━━";
-
-    await bot.sendMessage(chatId, userListMessage);
+    await bot.sendMessage(chatId,
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+        "👑 𝗔𝗗𝗠𝗜𝗡𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡\n\n" +
+        "Sélectionnez un utilisateur pour voir ses statistiques:\n" +
+        "━━━━━━━━━━━━━━━━━━━━━━━━",
+        { reply_markup: keyboard }
+    );
 }
 
 async function startPrecisionTest(bot, chatId) {
     const testWords = words.sort(() => 0.5 - Math.random()).slice(0, 10);
-    db.startTest(chatId, 'precision', testWords);
+    const username = (await bot.getChat(chatId)).username || `User_${chatId}`;
+    db.startTest(chatId, 'precision', testWords, username);
 
     const instructionsMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗣𝗥É𝗖𝗜𝗦𝗜𝗢𝗡
@@ -253,6 +258,7 @@ async function startPrecisionTest(bot, chatId) {
 async function startSpeedTest(bot, chatId) {
     const testTexts = [];
     const desiredQuestions = 10;
+    const username = (await bot.getChat(chatId)).username || `User_${chatId}`;
 
     // Tentatives de génération avec Gemini et fallback sur les noms
     for (let i = 0; i < desiredQuestions; i++) {
@@ -280,7 +286,7 @@ async function startSpeedTest(bot, chatId) {
         }
     }
 
-    db.startTest(chatId, 'speed', testTexts);
+    db.startTest(chatId, 'speed', testTexts, username);
 
     const instructionsMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
 ⚡ 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗩𝗜𝗧𝗘𝗦𝗦𝗘
@@ -333,11 +339,12 @@ async function startSpeedTraining(bot, chatId) {
 }
 
 async function startTrainingWithRank(bot, chatId, type, rank) {
-    const testWords = type === 'precision' ? 
+    const testWords = type === 'precision' ?
         words.sort(() => 0.5 - Math.random()).slice(0, 10) :
         await generateSpeedTestWords();
 
-    db.startTest(chatId, `${type}_training`, testWords);
+    const username = (await bot.getChat(chatId)).username || `User_${chatId}`;
+    db.startTest(chatId, `${type}_training`, testWords, username);
     db.saveUser(chatId, { selectedRank: rank });
 
     await bot.sendMessage(chatId,
@@ -348,26 +355,47 @@ async function startTrainingWithRank(bot, chatId, type, rank) {
 async function generateSpeedTestWords() {
     const testTexts = [];
     const desiredQuestions = 10;
+    let geminiErrors = 0;
+    const maxGeminiErrors = 3;
 
     // Tentatives de génération avec Gemini et fallback sur les noms
     for (let i = 0; i < desiredQuestions; i++) {
         try {
-            // Alterner entre Gemini et noms de la base de données
-            if (i % 2 === 0) {
+            // Alterner entre Gemini et noms, sauf si trop d'erreurs Gemini
+            if (i % 2 === 0 && geminiErrors < maxGeminiErrors) {
+                console.log(`Tentative de génération Gemini pour la question ${i + 1}`);
                 const text = await gemini.generateText();
                 if (text) {
+                    console.log(`Texte Gemini généré: ${text}`);
                     testTexts.push(text);
                     continue;
+                } else {
+                    geminiErrors++;
                 }
             }
             // Fallback sur les noms si Gemini échoue ou pour alterner
-            testTexts.push(names[Math.floor(Math.random() * names.length)]);
+            const randomName = names[Math.floor(Math.random() * names.length)];
+            console.log(`Utilisation du nom: ${randomName}`);
+            testTexts.push(randomName);
+
+            // Attendre un peu entre les tentatives si on a eu des erreurs
+            if (geminiErrors > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
         } catch (error) {
             console.error('Erreur lors de la génération du texte:', error);
+            geminiErrors++;
             // Fallback sur les noms en cas d'erreur
-            testTexts.push(names[Math.floor(Math.random() * names.length)]);
+            const randomName = names[Math.floor(Math.random() * names.length)];
+            console.log(`Fallback sur le nom: ${randomName}`);
+            testTexts.push(randomName);
         }
     }
+
+    if (geminiErrors >= maxGeminiErrors) {
+        console.log('Trop d\'erreurs Gemini, utilisation exclusive des noms pour cette session');
+    }
+
     return testTexts;
 }
 
@@ -375,6 +403,8 @@ async function generateSpeedTestWords() {
 async function handleTestResponse(bot, msg) {
     const test = db.getActiveTest(msg.chat.id);
     if (!test) return;
+
+    console.log(`Handling test response for user ${test.username} (${msg.chat.id})`);
 
     // Liste des variations acceptables de "next"
     const nextCommands = ['next', 'nex', 'newt', 'nexr', 'nxt'];
@@ -395,7 +425,7 @@ async function handleTestResponse(bot, msg) {
             test.timeAllowed = timeAllowed;
 
             // Start countdown
-            const countdownMsg = await bot.sendMessage(msg.chat.id, 
+            const countdownMsg = await bot.sendMessage(msg.chat.id,
                 `Q/ ${currentWord}\nTemps restant: ${timeAllowed.toFixed(1)}s`
             );
 
@@ -437,11 +467,13 @@ async function handleTestResponse(bot, msg) {
     const responseTime = (endTime - test.startTime) / 1000;
     const adjustedTime = responseTime - ((REACTION_TIME_MS + KEY_PRESS_TIME_MS) / 1000);
 
+    console.log(`Processing response for word "${currentWord}" from user ${test.username}`);
+
     const accuracy = typingTest.calculateAccuracy(currentWord, msg.text);
     const wpm = typingTest.calculateWPM(msg.text, adjustedTime);
 
     // En mode vitesse, seul le WPM compte pour le succès
-    let success = test.type.includes('speed') ? 
+    let success = test.type.includes('speed') ?
         wpm >= 20 : // Seuil minimum de WPM pour le mode vitesse
         accuracy >= 70; // Seuil de précision pour le mode précision
 
@@ -463,7 +495,6 @@ async function handleTestResponse(bot, msg) {
         success
     });
 
-    // Ajouter l'affichage des stats après chaque mot
     const resultMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
 RÉСУЛТАТЫ :
 
@@ -495,7 +526,8 @@ async function finishTest(bot, chatId) {
     setTimeout(async () => {
         const avgWpm = test.results.reduce((sum, r) => sum + r.wpm, 0) / test.results.length;
         const avgAccuracy = test.results.reduce((sum, r) => sum + r.accuracy, 0) / test.results.length;
-        const rank = typingTest.getRankFromStats(avgWpm, avgAccuracy);
+        const mode = test.type.includes('speed') ? 'speed' : 'precision';
+        const rank = typingTest.getRankFromStats(avgWpm, avgAccuracy, mode);
 
         const stats = {
             wpm: Math.round(avgWpm),
@@ -504,6 +536,9 @@ async function finishTest(bot, chatId) {
             totalTests: test.words.length,
             rank
         };
+
+        // Utiliser le username stocké dans l'objet test
+        db.saveStats(chatId, test.username, test.type, stats);
 
         const statsMessage = `
         🏯 𝐒𝐇𝐈𝐑𝐎 𝐎𝐍𝐈 - 𝔾𝕌ℕ ℙ𝔸ℝ𝕂
@@ -525,7 +560,6 @@ async function finishTest(bot, chatId) {
         `;
 
         await bot.sendMessage(chatId, statsMessage);
-        db.saveStats(chatId, test.type, stats);
     }, 3000);
 }
 
@@ -540,7 +574,7 @@ module.exports = {
     startTrainingWithRank,
     handleTestResponse,
     showHelp: async (bot, chatId) => {
-        await bot.sendMessage(chatId, 
+        await bot.sendMessage(chatId,
             "🏯 Guide d'utilisation - Shiro Oni\n\n" +
             "1. Choisissez votre mode d'entraînement\n" +
             "2. Suivez les instructions à l'écran\n" +

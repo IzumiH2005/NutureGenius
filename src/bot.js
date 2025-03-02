@@ -60,6 +60,15 @@ bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     console.log(`Callback query received: ${query.data} from chat ${chatId}`);
 
+    if (query.data.startsWith('user_stats_')) {
+        const userId = query.data.split('_')[2];
+        const user = database.getUser(userId); // Assumed database.getUser exists
+        if (user) {
+            await commands.showStats(bot, chatId, user.username || `User ${user.id}`);
+        }
+        return;
+    }
+
     if (query.data.startsWith('precision_training_') || query.data.startsWith('speed_training_')) {
         const [type, , rank] = query.data.split('_');
         await commands.startTrainingWithRank(bot, chatId, type, rank);

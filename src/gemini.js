@@ -9,9 +9,19 @@ if (!apiKey) {
 
 const genAI = new GoogleGenerativeAI(apiKey);
 
+let lastCallTime = 0;
+const RATE_LIMIT_DELAY = 2000; // 2 secondes entre chaque appel
+
 async function generateText() {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.0-pro" }); 
+        // Vérifier le délai depuis le dernier appel
+        const now = Date.now();
+        const timeSinceLastCall = now - lastCallTime;
+        if (timeSinceLastCall < RATE_LIMIT_DELAY) {
+            await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastCall));
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); 
 
         const prompts = [
             "Générer une citation aléatoire",
@@ -24,6 +34,7 @@ async function generateText() {
         const prompt = prompts[Math.floor(Math.random() * prompts.length)];
         console.log(`Generating text with prompt: ${prompt}`);
 
+        lastCallTime = Date.now();
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
