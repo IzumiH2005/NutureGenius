@@ -2,8 +2,33 @@
 const users = new Map();
 const activeTests = new Map();
 const userSessions = new Map();
-const customTexts = new Map(); // Stockage des textes personnalisés
-const customTextStats = new Map(); // Stockage des stats par texte
+const customTexts = new Map();
+const customTextStats = new Map();
+
+// Fonction utilitaire pour mélanger un tableau
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+// Fonction utilitaire pour découper le texte en phrases
+function splitTextIntoSentences(text) {
+    return text
+        .split(/[.!?]+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0 && s.split(/\s+/).length >= 3); // Au moins 3 mots par phrase
+}
+
+// Fonction utilitaire pour découper une phrase en mots
+function splitSentenceIntoWords(sentence) {
+    return sentence
+        .split(/\s+/)
+        .map(w => w.trim())
+        .filter(w => w.length > 0);
+}
 
 // Session management
 function createUserSession(userId) {
@@ -33,21 +58,6 @@ function updateSessionActivity(userId) {
     return session;
 }
 
-// Fonction utilitaire pour découper le texte en phrases
-function splitTextIntoSentences(text) {
-    return text
-        .split(/[.!?]+/)
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
-}
-
-// Fonction utilitaire pour découper une phrase en mots
-function splitSentenceIntoWords(sentence) {
-    return sentence
-        .split(/\s+/)
-        .map(w => w.trim())
-        .filter(w => w.length > 0);
-}
 
 // Database operations
 const db = {
@@ -68,27 +78,48 @@ const db = {
         const sentences = splitTextIntoSentences(content);
         console.log(`[Custom Text] Split into ${sentences.length} sentences`);
 
-        // Pour chaque phrase, découper en mots
+        // Pour chaque phrase, créer un élément avec la phrase complète et ses mots
         const processedContent = sentences.map(sentence => ({
-            sentence: sentence,
-            words: splitSentenceIntoWords(sentence)
+            type: 'sentence',
+            content: sentence,
+            words: splitSentenceIntoWords(sentence),
+            difficulty: sentence.length // Longueur comme mesure basique de difficulté
         }));
+
+        // Ajouter également des éléments pour les mots individuels
+        const allWords = sentences.flatMap(sentence =>
+            splitSentenceIntoWords(sentence).map(word => ({
+                type: 'word',
+                content: word,
+                words: [word],
+                difficulty: word.length
+            }))
+        );
+
+        // Mélanger les deux types d'éléments
+        const combinedContent = shuffleArray([...processedContent, ...allWords]);
 
         const textId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
         const textData = {
             id: textId,
             name: textName,
-            content: processedContent,
+            content: combinedContent,
             rawContent: content,
             createdBy: userId,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            stats: {
+                sentenceCount: sentences.length,
+                wordCount: allWords.length,
+                totalCharacters: content.length
+            }
         };
 
         customTexts.set(textId, textData);
         console.log(`[Custom Text] Saved text with ID ${textId}:`, {
             name: textName,
-            sentenceCount: processedContent.length,
-            totalWords: processedContent.reduce((sum, s) => sum + s.words.length, 0)
+            elements: combinedContent.length,
+            sentenceCount: sentences.length,
+            wordCount: allWords.length
         });
 
         return textId;
@@ -153,21 +184,21 @@ const db = {
         }));
     },
 
-    startTest(userId, testType, words, username) {
+    startTest(userId, testType, elements, username) {
         const session = createUserSession(userId);
         updateSessionActivity(userId);
 
-        console.log(`[Test Manager] Starting ${testType} test for user ${username} (${userId}) with ${words.length} words`);
+        console.log(`[Test Manager] Starting ${testType} test for user ${username} (${userId}) with ${elements.length} elements`);
 
         const newTest = {
             type: testType,
-            words,
+            elements: elements, // Stocke tous les éléments du test
             currentIndex: 0,
             startTime: Date.now(),
             results: [],
             errors: 0,
             successCount: 0,
-            totalTests: words.length,
+            totalTests: elements.length,
             username,
             countdownInterval: null,
             sessionId: Date.now()
@@ -178,7 +209,8 @@ const db = {
 
         console.log(`[Test Manager] Test created:`, {
             type: testType,
-            wordCount: words.length,
+            elementCount: elements.length,
+            firstElement: elements[0],
             username
         });
     },
@@ -199,7 +231,13 @@ const db = {
         updateSessionActivity(userId);
         const test = activeTests.get(userId);
         if (test) {
-            console.log(`[Test Manager] Adding result for ${test.username}:`, result);
+            console.log(`[Test Manager] Adding result for ${test.username}:`, {
+                elementType: test.elements[test.currentIndex].type,
+                content: result.content,
+                accuracy: result.accuracy,
+                wpm: result.wpm
+            });
+
             test.results.push(result);
             if (result.success) {
                 test.successCount++;
@@ -220,7 +258,7 @@ const db = {
             test.countdownInterval = null;
         }
 
-        if (test && test.currentIndex >= test.words.length) {
+        if (test && test.currentIndex >= test.elements.length) {
             activeTests.delete(userId);
             if (session) {
                 session.currentTest = null;
@@ -327,7 +365,7 @@ const db = {
 function cleanupActiveTests() {
     const activeTestsArray = Array.from(activeTests.entries());
     activeTestsArray.forEach(([userId, test]) => {
-        if (test.currentIndex >= test.words.length) {
+        if (test.currentIndex >= test.elements.length) {
             if (test.countdownInterval) {
                 clearInterval(test.countdownInterval);
                 test.countdownInterval = null;

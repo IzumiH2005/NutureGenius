@@ -478,22 +478,21 @@ async function generateSpeedTestWords() {
 async function handleTestResponse(bot, msg) {
     const test = db.getActiveTest(msg.chat.id);
     if (!test) {
-        console.log(`Ignoring message - no active test for chat ${msg.chat.id}`);
+        console.log(`[Test Response] No active test for chat ${msg.chat.id}`);
         return;
     }
 
-    // Vérifier si un message est en cours de traitement
     if (!acquireLock(msg.chat.id)) {
-        console.log(`Message skipped for chat ${msg.chat.id} - lock active`);
+        console.log(`[Test Response] Message skipped for chat ${msg.chat.id} - lock active`);
         return;
     }
 
     try {
-        console.log(`Processing message for chat ${msg.chat.id}: "${msg.text}"`);
-        // Liste des variations acceptables de "next"
+        console.log(`[Test Response] Processing message for chat ${msg.chat.id}: "${msg.text}"`);
         const nextCommands = ['next', 'nex', 'newt', 'nexr', 'nxt', 'n\'est', 'n\'est\'', '\'est'];
+
         if (nextCommands.includes(msg.text.toLowerCase())) {
-            if (test.currentIndex >= test.words.length) {
+            if (test.currentIndex >= test.elements.length) {
                 await finishTest(bot, msg.chat.id);
                 return;
             }
@@ -507,27 +506,33 @@ async function handleTestResponse(bot, msg) {
             const startTime = now();
             test.startTime = startTime;
 
-            // Générer dynamiquement le prochain mot si c'est un test de vitesse
-            if (test.type === 'speed') {
-                console.log('Generating next word for speed test');
-                const nextWord = await generateNextTestWord(test);
-                test.words[test.currentIndex] = nextWord;
-                console.log(`Next word set to: ${nextWord}`);
-            }
-
-            const currentWord = test.words[test.currentIndex];
+            const currentElement = test.elements[test.currentIndex];
             const user = db.getUser(msg.chat.id);
 
+            // Préparer le message en fonction du type d'élément
+            const typeEmoji = currentElement.type === 'sentence' ? '📝' : '🔤';
+            const difficultyStars = '⭐'.repeat(Math.min(5, Math.ceil(currentElement.difficulty / 20)));
+
+            console.log(`[Test Response] Preparing element:`, {
+                type: currentElement.type,
+                content: currentElement.content,
+                difficulty: currentElement.difficulty,
+                wordsCount: currentElement.words.length
+            });
+
+            const elementMessage = `${typeEmoji} À recopier (${currentElement.type === 'sentence' ? 'Phrase' : 'Mot'}):\n` +
+                `${currentElement.content}\n\n` +
+                `Difficulté: ${difficultyStars}\n` +
+                `Mots: ${currentElement.words.length}`;
+
             if (user?.selectedRank && test.type.includes('training')) {
-                const timeAllowed = calculateTimeAllowed(user.selectedRank, currentWord.length);
+                const timeAllowed = calculateTimeAllowed(user.selectedRank, currentElement.content.length);
                 test.timeAllowed = timeAllowed;
 
-                // Start countdown
                 const countdownMsg = await bot.sendMessage(msg.chat.id,
-                    `Q/ ${currentWord}\nTemps restant: ${timeAllowed.toFixed(1)}s`
+                    `${elementMessage}\nTemps restant: ${timeAllowed.toFixed(1)}s`
                 );
 
-                // Update countdown
                 const interval = setInterval(async () => {
                     const elapsed = (now() - startTime) / 1000;
                     const remaining = timeAllowed - elapsed;
@@ -536,29 +541,29 @@ async function handleTestResponse(bot, msg) {
                         clearInterval(interval);
                         try {
                             await bot.editMessageText(
-                                `Q/ ${currentWord}\nTemps écoulé! ⏰`,
+                                `${elementMessage}\nTemps écoulé! ⏰`,
                                 { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
                             );
                         } catch (error) {
-                            console.error('Error updating countdown message:', error);
+                            console.error('[Test Response] Error updating countdown message:', error);
                         }
                         test.currentIndex++;
                         await bot.sendMessage(msg.chat.id, "Écrivez 'next' pour continuer.");
                     } else {
                         try {
                             await bot.editMessageText(
-                                `Q/ ${currentWord}\nTemps restant: ${remaining.toFixed(1)}s`,
+                                `${elementMessage}\nTemps restant: ${remaining.toFixed(1)}s`,
                                 { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
                             );
                         } catch (error) {
-                            console.error('Error updating countdown message:', error);
+                            console.error('[Test Response] Error updating countdown message:', error);
                         }
                     }
                 }, 1000);
 
                 test.countdownInterval = interval;
             } else {
-                await bot.sendMessage(msg.chat.id, `Q/ ${currentWord}`);
+                await bot.sendMessage(msg.chat.id, elementMessage);
             }
             return;
         }
@@ -569,14 +574,18 @@ async function handleTestResponse(bot, msg) {
             test.countdownInterval = null;
         }
 
-        const currentWord = test.words[test.currentIndex];
+        const currentElement = test.elements[test.currentIndex];
         const endTime = now();
         const responseTime = (endTime - test.startTime) / 1000;
         const adjustedTime = responseTime - ((REACTION_TIME_MS + KEY_PRESS_TIME_MS) / 1000);
 
-        console.log(`Processing response for word "${currentWord}" from user ${test.username}`);
+        console.log(`[Test Response] Processing response for element:`, {
+            type: currentElement.type,
+            content: currentElement.content,
+            userResponse: msg.text
+        });
 
-        const accuracy = typingTest.calculateAccuracy(currentWord, msg.text);
+        const accuracy = typingTest.calculateAccuracy(currentElement.content, msg.text);
         const wpm = typingTest.calculateWPM(msg.text, adjustedTime);
 
         let success = test.type.includes('speed') ?
@@ -593,36 +602,37 @@ async function handleTestResponse(bot, msg) {
         }
 
         db.updateTestResult(msg.chat.id, {
-            word: currentWord,
+            content: currentElement.content,
             response: msg.text,
             time: responseTime,
             accuracy,
             wpm,
-            success
+            success,
+            elementType: currentElement.type
         });
 
+        const typeEmoji = currentElement.type === 'sentence' ? '📝' : '🔤';
         const resultMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
-RÉСУЛТАТЫ :
+${typeEmoji} RÉSULTATS:
 
 🎯 Précision : ${Math.round(accuracy)}%
 ⚡ Vitesse : ${Math.round(wpm)} WPM
-⏱️ Temps total : ${responseTime.toFixed(2)}s
-⚡ Temps net (sans marges) : ${adjustedTime.toFixed(2)}s
+⏱️ Temps : ${responseTime.toFixed(2)}s
+⚡ Temps net : ${adjustedTime.toFixed(2)}s
 
 ${success ? '✅ Succès!' : '❌ Essayez encore!'}
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
-Écrivez 'next' pour continuer.`;
+${test.currentIndex + 1 < test.elements.length ? "Écrivez 'next' pour continuer." : "Écrivez 'next' pour terminer le test."}`;
 
         await bot.sendMessage(msg.chat.id, resultMessage);
 
         test.currentIndex++;
 
-        if (test.currentIndex >= test.words.length) {
+        if (test.currentIndex >= test.elements.length) {
             await finishTest(bot, msg.chat.id);
         }
     } finally {
-        // Toujours libérer le verrou à la fin
         releaseLock(msg.chat.id);
     }
 }
@@ -846,7 +856,7 @@ async function handleCustomTextInput(bot, msg) {
 
                 if (!session.pendingCustomText) {
                     console.error(`[Custom Text] No pending text found for user ${chatId}`);
-                    await bot.sendMessagechatId,
+                    await bot.sendMessage(chatId,
                         "Une erreur est survenue. Veuillez recommencer l'enregistrement du texte.");
                     session.customTextState = null;
                     return true;
@@ -875,7 +885,7 @@ async function handleCustomTextInput(bot, msg) {
                     "Vous pouvez maintenant :\n" +
                     "• Le retrouver dans 'Mes textes'\n" +
                     "• Le voir dans 'Textes préenregistrés'\n" +
-                    "• Commencerl'entraînement dessus\n\n" +
+                    "• Commencer l'entraînement dessus\n\n" +
                     "━━━━━━━━━━━━━━━━━━━━━━━━";
 
                 await bot.sendMessage(chatId, successMessage);
@@ -1020,47 +1030,56 @@ async function showTextRanking(bot, chatId, textId) {
     await bot.sendMessage(chatId, message, { reply_markup: keyboard });
 }
 
-// Modification de la fonction startCustomTest
+// Function to shuffle an array (Fisher-Yates algorithm)
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+// Dans la fonction startCustomTest
 async function startCustomTest(bot, chatId, textId) {
     console.log(`[Custom Test] Starting test for text ${textId} by user ${chatId}`);
 
     const customText = db.getCustomText(textId);
-    if (!customText || !customText.content) {
-        console.error(`[Custom Test] Text not found or invalid for ID ${textId}`, {
-            textExists: !!customText,
-            hasContent: customText?.content ? true : false
-        });
-        await bot.sendMessage(chatId, "⚠️ Texte introuvable ou invalide. Veuillez réessayer.");
+    if (!customText || !Array.isArray(customText.content)) {
+        console.error(`[Custom Test] Text not found or invalid format for ID ${textId}`);
+        await bot.sendMessage(chatId, "⚠️ Texte introuvable ou format invalide. Veuillez réessayer.");
         return;
     }
 
-    console.log(`[Custom Test] Found text: "${customText.name}" with ${customText.content.length} sentences`);
+    console.log(`[Custom Test] Found text: "${customText.name}" with ${customText.content.length} elements`);
     const username = (await bot.getChat(chatId)).username || `User_${chatId}`;
 
-    // On utilise directement les phrases préparées lors de l'enregistrement
-    const sentences = customText.content;
-    if (sentences.length === 0) {
-        console.error(`[Custom Test] No valid sentences found in text ${textId}`);
-        await bot.sendMessage(chatId, "⚠️ Le texte ne contient pas de phrases valides.");
+    // Sélectionner 10 éléments aléatoires pour le test
+    const testElements = shuffleArray([...customText.content]).slice(0, 10);
+
+    if (testElements.length === 0) {
+        console.error(`[Custom Test] No valid elements found in text ${textId}`);
+        await bot.sendMessage(chatId, "⚠️ Le texte ne contient pas d'éléments valides.");
         return;
     }
 
-    // Limiter à 10 phrases maximum pour le test
-    const testSentences = sentences.slice(0, 10);
-    console.log(`[Custom Test] Prepared ${testSentences.length} sentences for testing`, {
-        firstSentence: testSentences[0].sentence,
-        wordCount: testSentences[0].words.length
+    // Commencer avec le premier élément
+    const firstElement = testElements[0];
+    console.log(`[Custom Test] Starting with element:`, {
+        type: firstElement.type,
+        content: firstElement.content,
+        wordCount: firstElement.words.length
     });
 
-    // Démarrer le test avec les mots de la première phrase
-    db.startTest(chatId, 'custom', testSentences[0].words, username);
-    console.log(`[Custom Test] Test started with ${testSentences[0].words.length} words from first sentence`);
+    // Démarrer le test avec les mots de l'élément actuel
+    db.startTest(chatId, 'custom', firstElement.words, username);
 
+    const typeEmoji = firstElement.type === 'sentence' ? '📝' : '🔤';
     await bot.sendMessage(chatId,
         "📝 𝗧𝗘𝗦𝗧 𝗣𝗘𝗥𝗦𝗢𝗡𝗡𝗔𝗟𝗜𝗦É\n\n" +
         `Texte : "${customText.name}"\n` +
-        `Nombre de phrases à tester : ${testSentences.length}\n` +
-        `Mots dans la première phrase : ${testSentences[0].words.length}\n\n` +
+        `Type : ${typeEmoji} ${firstElement.type === 'sentence' ? 'Phrase complète' : 'Mot'}\n` +
+        `Éléments à tester : ${testElements.length}\n` +
+        `Mots dans l'élément actuel : ${firstElement.words.length}\n\n` +
         "Écrivez 'next' pour commencer.");
 }
 
