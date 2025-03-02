@@ -15,6 +15,10 @@ author = "agent"
 task = "workflow.run"
 args = "Telegram Bot"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Telegram Bot with Status Page"
+
 [[workflows.workflow]]
 name = "Telegram Bot"
 author = "agent"
@@ -28,7 +32,22 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "node src/bot.js"
-waitForPort = 3000
+waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Telegram Bot with Status Page"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node src/bot.js"
+waitForPort = 5000
 
 [deployment]
 run = ["sh", "-c", "node src/bot.js"]
