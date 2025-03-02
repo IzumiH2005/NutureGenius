@@ -21,21 +21,16 @@ async function generateText() {
             await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastCall));
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); 
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" }); 
 
         const prompts = [
-            "Génère une citation inspirante ou un adage de ton choix.",
-            "Propose un mot ou un groupe de mots évocateur et poétique.",
-            "Donne une parole marquante de rap français (style Damso, Ninho, Booba ou Youssoupha).",
-            "Crée une expression originale qui pourrait devenir un dicton.",
-            "Cite une phrase d'un philosophe ou d'un auteur célèbre.",
-            "Invente un mot composé ou une expression poétique.",
-            "Donne un adjectif ou un groupe d'adjectifs évocateurs.",
-            "Propose une phrase percutante qui pourrait venir d'une chanson de rap.",
-            "Crée un néologisme (nouveau mot) avec sa signification.",
-            "Extrait une citation existante de la littérature ou de la philosophie.",
-            "Compose une phrase courte mais impactante.",
-            "Génère un mot ou une expression qui évoque une émotion forte."
+            "Donne uniquement une citation courte sans guillemets et sans explications.",
+            "Donne uniquement un mot ou une expression poétique sans explications.",
+            "Donne uniquement une phrase de rap français sans guillemets ni explications.",
+            "Donne uniquement une expression originale sans guillemets ni explications.",
+            "Donne uniquement une citation philosophique sans guillemets ni explications.",
+            "Donne uniquement un nouveau mot composé sans explications.",
+            "Donne uniquement une phrase courte impactante sans guillemets ni explications."
         ];
 
         const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)];
@@ -46,7 +41,10 @@ async function generateText() {
         lastCallTime = Date.now();
         const result = await model.generateContent(selectedPrompt);
         const response = await result.response;
-        const text = response.text();
+        const text = response.text()
+            .replace(/["*]/g, '') // Supprime les guillemets et astérisques
+            .replace(/^(voici|je propose|suggestion|exemple|une citation|une phrase|un mot).*?:/i, '') // Supprime les introductions
+            .trim();
 
         console.log(`Texte généré avec succès: "${text.substring(0, 50)}..."`);
 

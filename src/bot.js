@@ -128,11 +128,15 @@ bot.onText(/\/start/, async (msg) => {
     if (isOnCooldown(msg.chat.id, 'start')) return;
 
     const chatId = msg.chat.id;
+    const username = msg.from.first_name || msg.from.username || `User_${chatId}`;
     let progress = 0;
-    console.log(`Start command received from chat ${chatId}`);
+    console.log(`Start command received from chat ${chatId} (${username})`);
+
+    // Save user immediately with first_name
+    db.saveUser(chatId, { username });
+
     const loadingMsg = await bot.sendMessage(chatId, 'Load...0%');
 
-    // Simulate loading progress
     const interval = setInterval(async () => {
         progress += 10;
         if (progress <= 100) {
@@ -259,6 +263,31 @@ handleCommand(/\/user/, async (msg) => {
             "━━━━━━━━━━━━━━━━━━━━━━━━"
         );
     }
+});
+
+// Handle /end command
+handleCommand(/\/end/, async (msg) => {
+    const chatId = msg.chat.id;
+    const test = db.getActiveTest(chatId);
+
+    if (!test) {
+        await bot.sendMessage(chatId, "Aucun test en cours.");
+        return;
+    }
+
+    // Nettoyer le test sans sauvegarder les stats
+    if (test.countdownInterval) {
+        clearInterval(test.countdownInterval);
+    }
+    db.endTest(chatId);
+
+    await bot.sendMessage(chatId,
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+        "❌ 𝗧𝗘𝗦𝗧 𝗔𝗡𝗡𝗨𝗟É\n\n" +
+        "Le test en cours a été annulé.\n" +
+        "Utilisez /training pour commencer un nouveau test.\n" +
+        "━━━━━━━━━━━━━━━━━━━━━━━━"
+    );
 });
 
 // Handle text messages for tests with cooldown

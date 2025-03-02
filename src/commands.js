@@ -246,12 +246,15 @@ async function showUserList(bot, chatId) {
         "━━━━━━━━━━━━━━━━━━━━━━━━",
         { reply_markup: keyboard }
     );
+
+    console.log('User list keyboard created with users:', users.map(u => u.username).join(', '));
 }
 
 async function startPrecisionTest(bot, chatId) {
     const testWords = words.sort(() => 0.5 - Math.random()).slice(0, 10);
     const chat = await bot.getChat(chatId);
-    const username = chat.username || `User_${chatId}`;
+    const user = await bot.getChatMember(chatId, chatId);
+    const username = user.user.first_name || chat.username || `User_${chatId}`;
 
     // Sauvegarder le username immédiatement
     db.saveUser(chatId, { username });
@@ -281,15 +284,15 @@ async function startPrecisionTest(bot, chatId) {
 async function startSpeedTest(bot, chatId) {
     const testTexts = [];
     const desiredQuestions = 10;
-    const chat = await bot.getChat(chatId);
-    const username = chat.username || `User_${chatId}`;
+    const user = await bot.getChatMember(chatId, chatId);
+    const username = user.user.first_name || `User_${chatId}`;
 
     // Sauvegarder le username immédiatement
     db.saveUser(chatId, { username });
 
-    // Limiter le nombre de requêtes Gemini entre 3 et 5
-    const geminiRequests = Math.floor(Math.random() * 3) + 3; // Entre 3 et 5 requêtes
-    console.log(`Will make ${geminiRequests} Gemini requests`);
+    // Limiter le nombre de requêtes Gemini à 2-3 maximum
+    const geminiRequests = Math.floor(Math.random() * 2) + 2; // Entre 2 et 3 requêtes
+    console.log(`Planning to make ${geminiRequests} Gemini requests`);
 
     // Remplir avec des noms au début
     for (let i = 0; i < desiredQuestions - geminiRequests; i++) {
@@ -300,23 +303,27 @@ async function startSpeedTest(bot, chatId) {
     // Ajouter les textes Gemini aux positions aléatoires
     for (let i = 0; i < geminiRequests; i++) {
         try {
+            console.log(`Making Gemini request ${i + 1}/${geminiRequests}`);
             const text = await gemini.generateText();
+            console.log(`Gemini response for request ${i + 1}:`, text);
+
             if (text) {
-                // Insérer à une position aléatoire
                 const position = Math.floor(Math.random() * (testTexts.length + 1));
                 testTexts.splice(position, 0, text);
+                console.log(`Successfully added Gemini text at position ${position}`);
             } else {
-                // Fallback sur un nom si la génération échoue
+                console.log(`Gemini request ${i + 1} failed, using fallback`);
                 const randomName = names[Math.floor(Math.random() * names.length)];
                 testTexts.push(randomName);
             }
         } catch (error) {
-            console.error('Erreur lors de la génération du texte:', error);
+            console.error(`Error during Gemini request ${i + 1}:`, error);
             const randomName = names[Math.floor(Math.random() * names.length)];
             testTexts.push(randomName);
         }
     }
 
+    console.log('Final test texts:', testTexts);
     db.startTest(chatId, 'speed', testTexts, username);
 
     const instructionsMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
@@ -600,6 +607,10 @@ async function finishTest(bot, chatId) {
         const bestWpm = Math.max(...test.results.map(r => r.wpm));
         const bestAccuracy = Math.max(...test.results.map(r => r.accuracy));
 
+        // Get username from Telegram
+        const chat = await bot.getChat(chatId);
+        const username = chat.username || test.username || `User_${chatId}`;
+
         const stats = {
             wpm: Math.round(avgWpm),
             accuracy: Math.round(avgAccuracy),
@@ -610,8 +621,8 @@ async function finishTest(bot, chatId) {
             rank
         };
 
-        // Sauvegarder les stats immédiatement
-        db.saveStats(chatId, test.username, test.type, stats);
+        // Sauvegarder les stats avec le username
+        db.saveStats(chatId, username, test.type, stats);
 
         let statsMessage = `🏯 𝐒𝐇𝐈𝐑𝐎 𝐎𝐍𝐈 - 𝔾𝕌ℕ ℙ𝔸ℝ𝕂
 Test ${test.type.includes('speed') ? 'de vitesse' : 'de précision'} terminé!
@@ -638,16 +649,10 @@ Test ${test.type.includes('speed') ? 'de vitesse' : 'de précision'} terminé!
 
 Utilisez /training pour continuer l'entraînement`;
 
-        // Supprimer le message d'analyse
-        try {
-            await bot.deleteMessage(chatId, analysisMsg.message_id);
-        } catch (error) {
-            console.error('Error deleting analysis message:', error);
-        }
 
         // Envoyer les stats finales
         await bot.sendMessage(chatId, statsMessage);
-        console.log(`Final stats sent successfully to ${test.username}`);
+        console.log(`Final stats sent successfully to ${username}`);
 
     } catch (error) {
         console.error('Error in finishTest:', error);

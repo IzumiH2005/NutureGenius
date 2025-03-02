@@ -40,7 +40,7 @@ const db = {
     getAllUsers() {
         return Array.from(users.entries()).map(([id, data]) => ({
             id,
-            username: data.username || `User_${data.username || id}`,
+            username: data.username || `User_${id}`,
             ...data
         }));
     },
