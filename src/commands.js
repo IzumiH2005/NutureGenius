@@ -6,6 +6,7 @@ const now = require('performance-now');
 const fs = require('fs');
 const path = require('path');
 
+// Constants for menu and test handling
 const REACTION_TIME_MS = 220;
 const KEY_PRESS_TIME_MS = 150;
 
@@ -32,37 +33,117 @@ function calculateTimeAllowed(rank, wordLength) {
 async function showMenu(bot, chatId) {
     console.log(`Showing menu for chat ${chatId}`);
 
-    try {
-        // Send the image first
-        const imagePath = path.join(__dirname, '../attached_assets/4c85c30fcb415b7bea09eaad3db7a35a (1).jpg');
-        await bot.sendPhoto(chatId, imagePath);
-    } catch (error) {
-        console.error('Error sending image:', error);
-    }
+    const menuText = `🏯 𝐒𝐇𝐈𝐑𝐎 𝐎𝐍𝐈 - 𝔾𝕌ℕ ℙ𝔸ℝ𝕂 🏯
 
-    const menuText = `🏯 Gun Park - Shiro Oni
+📝 *Bienvenue dans votre dojo d'entraînement à la frappe!*
 
-Commandes disponibles:
-/training - Afficher ce menu
-/help - Aide et instructions
-/stats - Voir vos statistiques
+━━━━━━━━━━━━━━━━━━━━━
 
-Choisissez votre mode d'entraînement:`;
+Notre bot est spécialement conçu pour vous aider à maîtriser deux aspects essentiels :
+• La *précision* de vos frappes (白 Shiro)
+• La *vitesse* d'exécution (鬼 Oni)
+
+🎯 *Objectif:* Devenir un véritable Shiro Oni, capable de combiner vitesse et précision parfaite.
+
+━━━━━━━━━━━━━━━━━━━━━
+
+📜 *Commandes disponibles:*
+\`/training\` - Accéder au menu d'entraînement
+\`/help\` - Guide et instructions détaillées
+\`/stats\` - Consulter vos statistiques
+
+━━━━━━━━━━━━━━━━━━━━━
+
+*Choisissez votre voie d'entraînement:*`;
 
     const keyboard = {
         inline_keyboard: [
             [
-                { text: "Test de Précision", callback_data: "precision_test" },
-                { text: "Entraînement Précision", callback_data: "precision_training" }
-            ],
-            [
-                { text: "Test de Vitesse", callback_data: "speed_test" },
-                { text: "Entraînement Vitesse", callback_data: "speed_training" }
+                { text: "🎯 Mode Précision", callback_data: "mode_precision" },
+                { text: "⚡ Mode Vitesse", callback_data: "mode_speed" }
             ]
         ]
     };
 
-    await bot.sendMessage(chatId, menuText, { reply_markup: keyboard });
+    try {
+        const imagePath = path.join(__dirname, '../attached_assets/4c85c30fcb415b7bea09eaad3db7a35a (1).jpg');
+        await bot.sendPhoto(chatId, imagePath, { 
+            caption: menuText,
+            reply_markup: keyboard,
+            parse_mode: 'Markdown'
+        });
+    } catch (error) {
+        console.error('Error sending menu with image:', error);
+        // Fallback to text-only menu if image fails
+        await bot.sendMessage(chatId, menuText, { 
+            reply_markup: keyboard,
+            parse_mode: 'Markdown'
+        });
+    }
+}
+
+async function showPrecisionMenu(bot, chatId) {
+    const menuText = `🎯 𝐌𝐨𝐝𝐞 𝐏𝐫é𝐜𝐢𝐬𝐢𝐨𝐧 - 白 (𝐒𝐡𝐢𝐫𝐨)
+
+━━━━━━━━━━━━━━━━━━━━━
+
+*La précision est le fondement de la maîtrise.*
+Un Shiro Oni doit maintenir une précision parfaite même à grande vitesse.
+
+💡 _"La vitesse sans précision n'est que chaos"_
+
+━━━━━━━━━━━━━━━━━━━━━
+
+*Choisissez votre type d'entraînement:*`;
+
+    const keyboard = {
+        inline_keyboard: [
+            [
+                { text: "📝 Test de niveau", callback_data: "precision_test" },
+                { text: "🎯 Entraînement", callback_data: "precision_training" }
+            ],
+            [
+                { text: "⬅️ Retour au menu", callback_data: "show_menu" }
+            ]
+        ]
+    };
+
+    await bot.sendMessage(chatId, menuText, { 
+        reply_markup: keyboard,
+        parse_mode: 'Markdown'
+    });
+}
+
+async function showSpeedMenu(bot, chatId) {
+    const menuText = `⚡ 𝐌𝐨𝐝𝐞 𝐕𝐢𝐭𝐞𝐬𝐬𝐞 - 鬼 (𝐎𝐧𝐢)
+
+━━━━━━━━━━━━━━━━━━━━━
+
+*La vitesse est le chemin vers la transcendance.*
+Un véritable Oni frappe avec la rapidité de l'éclair.
+
+💡 _"La vitesse est l'essence du combat"_
+
+━━━━━━━━━━━━━━━━━━━━━
+
+*Choisissez votre type d'entraînement:*`;
+
+    const keyboard = {
+        inline_keyboard: [
+            [
+                { text: "⚡ Test de niveau", callback_data: "speed_test" },
+                { text: "🔥 Entraînement", callback_data: "speed_training" }
+            ],
+            [
+                { text: "⬅️ Retour au menu", callback_data: "show_menu" }
+            ]
+        ]
+    };
+
+    await bot.sendMessage(chatId, menuText, { 
+        reply_markup: keyboard,
+        parse_mode: 'Markdown'
+    });
 }
 
 async function showStats(bot, chatId, username) {
@@ -314,16 +395,15 @@ async function finishTest(bot, chatId) {
         };
 
         const statsMessage = `
-🏯 Gun Park - Shiro Oni
-
-Test ${test.type === 'speed' ? 'de vitesse' : 'de précision'} terminé!
-
-Vitesse moyenne: ${stats.wpm} WPM
-Précision: ${stats.accuracy}%
-Réussites: ${stats.successCount}/${stats.totalTests}
-
-Rang: ${rank}
-`;
+        🏯 Gun Park - Shiro Oni
+        Test ${test.type === 'speed' ? 'de vitesse' : 'de précision'} terminé!
+        
+        Vitesse moyenne: ${stats.wpm} WPM
+        Précision: ${stats.accuracy}%
+        Réussites: ${stats.successCount}/${stats.totalTests}
+        
+        Rang: ${rank}
+        `;
 
         await bot.sendMessage(chatId, statsMessage);
         db.saveStats(chatId, test.type, stats);
@@ -332,6 +412,8 @@ Rang: ${rank}
 
 module.exports = {
     showMenu,
+    showPrecisionMenu,
+    showSpeedMenu,
     startPrecisionTest,
     startSpeedTest,
     startPrecisionTraining,
@@ -340,15 +422,16 @@ module.exports = {
     handleTestResponse,
     showHelp: async (bot, chatId) => {
         await bot.sendMessage(chatId, 
-            "Guide d'utilisation:\n\n" +
+            "🏯 Guide d'utilisation - Shiro Oni\n\n" +
             "1. Choisissez votre mode d'entraînement\n" +
             "2. Suivez les instructions à l'écran\n" +
             "3. Tapez les mots exactement comme indiqué\n" +
             "4. Utilisez 'next' entre chaque test\n\n" +
-            "Conseils:\n" +
-            "- Évitez de regarder votre clavier\n" +
-            "- Concentrez-vous sur la précision avant la vitesse\n" +
-            "- Entraînez-vous régulièrement pour progresser");
+            "📝 Conseils de maître:\n" +
+            "• Évitez de regarder votre clavier\n" +
+            "• La précision avant la vitesse\n" +
+            "• Entraînement régulier = Progression\n" +
+            "• Respirez et restez concentré");
     },
     showStats,
     showUserList

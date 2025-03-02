@@ -70,6 +70,12 @@ bot.on('callback_query', async (query) => {
         case 'show_menu':
             await commands.showMenu(bot, chatId);
             break;
+        case 'mode_precision':
+            await commands.showPrecisionMenu(bot, chatId);
+            break;
+        case 'mode_speed':
+            await commands.showSpeedMenu(bot, chatId);
+            break;
         case 'precision_test':
             await commands.startPrecisionTest(bot, chatId);
             break;
