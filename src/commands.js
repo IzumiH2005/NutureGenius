@@ -295,6 +295,37 @@ async function startSpeedTest(bot, chatId) {
         testTexts.push(randomName);
     }
 
+    // Déterminer le nombre de textes Gemini à générer (entre 3 et 5)
+    const numGeminiTexts = Math.floor(Math.random() * 3) + 3; // Génère 3, 4 ou 5
+    console.log(`Planning to replace ${numGeminiTexts} words with Gemini texts`);
+
+    // Sélectionner des positions aléatoires pour les textes Gemini
+    const positions = [];
+    while (positions.length < numGeminiTexts) {
+        const pos = Math.floor(Math.random() * desiredQuestions);
+        if (!positions.includes(pos)) {
+            positions.push(pos);
+        }
+    }
+
+    // Générer et remplacer les textes aux positions sélectionnées
+    for (let i = 0; i < positions.length; i++) {
+        try {
+            console.log(`Making Gemini request ${i + 1}/${numGeminiTexts} for position ${positions[i]}`);
+            const text = await gemini.generateText();
+
+            if (text) {
+                console.log(`Successfully generated text at position ${positions[i]}: "${text}"`);
+                testTexts[positions[i]] = text;
+            } else {
+                console.log(`Gemini generation failed for position ${positions[i]}, keeping original word`);
+            }
+        } catch (error) {
+            console.error(`Error generating Gemini text for position ${positions[i]}:`, error);
+            // On garde le nom déjà présent en cas d'erreur
+        }
+    }
+
     console.log('Initial test texts:', testTexts);
     db.startTest(chatId, 'speed', testTexts, username);
 
@@ -318,7 +349,6 @@ async function startSpeedTest(bot, chatId) {
     await bot.sendMessage(chatId, instructionsMessage);
 }
 
-// Fonction pour générer du texte avec Gemini pendant un test actif
 async function generateNextTestWord(test) {
     try {
         // 30% de chance d'utiliser Gemini pendant le test
