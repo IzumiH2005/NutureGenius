@@ -68,6 +68,8 @@ précise comme une lame et rapide comme l'éclair.
 /stats - 📊 Analyser vos performances
 /help - 📚 Guide détaillé et techniques avancées
 /user - 👑 Administration (réservé aux administrateurs)
+/leaderboard - 🏆 Classement global
+/custom - 📝 Menu des textes personnalisés
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -84,7 +86,10 @@ précise comme une lame et rapide comme l'éclair.
             [
                 { text: "🎯 Mode Précision", callback_data: "mode_precision" },
                 { text: "⚡ Mode Vitesse", callback_data: "mode_speed" }
-            ]
+            ],
+            [{ text: "🏆 Leaderboard", callback_data: "show_leaderboard" }],
+            [{ text: "📝 Textes personnalisés", callback_data: "show_custom_menu" }]
+
         ]
     };
 
@@ -465,7 +470,6 @@ async function generateSpeedTestWords() {
 }
 
 
-
 async function handleTestResponse(bot, msg) {
     const test = db.getActiveTest(msg.chat.id);
     if (!test) {
@@ -699,6 +703,294 @@ Utilisez /training pour continuer l'entraînement`;
     }
 }
 
+async function showLeaderboard(bot, chatId) {
+    console.log('Generating leaderboard...');
+    const leaderboard = db.getGlobalLeaderboard();
+
+    let message = `🏆 𝗖𝗟𝗔𝗦𝗦𝗘𝗠𝗘𝗡𝗧 𝗚𝗟𝗢𝗕𝗔𝗟\n\n`;
+    message += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    if (leaderboard.length === 0) {
+        message += "Aucune donnée disponible pour le moment.\n";
+    } else {
+        leaderboard.slice(0, 10).forEach((user, index) => {
+            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '  ';
+            message += `${medal} ${index + 1}. ${user.username}\n`;
+            message += `   ⚡ WPM: ${Math.round(user.bestWpm)}\n`;
+            message += `   🎯 Précision: ${Math.round(user.bestAccuracy)}%\n\n`;
+        });
+    }
+
+    message += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    message += `Utilisez /custom pour accéder aux textes personnalisés\n`;
+    message += `et créer vos propres défis!`;
+
+    await bot.sendMessage(chatId, message);
+}
+
+async function showCustomMenu(bot, chatId) {
+    const menuText = `📝 𝗠𝗢𝗗𝗘 𝗧𝗘𝗫𝗧𝗘 𝗣𝗘𝗥𝗦𝗢𝗡𝗡𝗔𝗟𝗜𝗦É
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+Bienvenue dans le mode personnalisé!
+Créez, partagez et relevez des défis uniques.
+
+𝗢𝗣𝗧𝗜𝗢𝗡𝗦 𝗗𝗜𝗦𝗣𝗢𝗡𝗜𝗕𝗟𝗘𝗦:
+
+• Enregistrer un nouveau texte
+• S'entraîner sur textes préenregistrés
+• Accéder à vos textes personnels
+• Voir les classements par texte
+
+━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+    const keyboard = {
+        inline_keyboard: [
+            [{ text: "📝 Nouveau texte", callback_data: "custom_new" }],
+            [{ text: "🎯 Textes préenregistrés", callback_data: "custom_preset" }],
+            [{ text: "📚 Mes textes", callback_data: "custom_personal" }],
+            [{ text: "🏆 Classements", callback_data: "custom_rankings" }],
+            [{ text: "⬅️ Retour au menu", callback_data: "show_menu" }]
+        ]
+    };
+
+    await bot.sendMessage(chatId, menuText, { reply_markup: keyboard });
+}
+
+// Custom text handling functions
+async function handleNewCustomText(bot, chatId) {
+    const session = db.getUserSession(chatId);
+    if (!session) return;
+
+    session.customTextState = 'awaiting_text';
+    await bot.sendMessage(chatId,
+        "📝 𝗘𝗡𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗘𝗠𝗘𝗡𝗧 𝗗'𝗨𝗡 𝗧𝗘𝗫𝗧𝗘\n\n" +
+        "Veuillez copier-coller votre texte complet.\n" +
+        "Le texte doit contenir au moins 100 caractères.");
+}
+
+async function handleCustomTextInput(bot, msg) {
+    const session = db.getUserSession(msg.chat.id);
+    if (!session?.customTextState) return false;
+
+    switch (session.customTextState) {
+        case 'awaiting_text':
+            if (msg.text.length < 100) {
+                await bot.sendMessage(msg.chat.id, "⚠️ Le texte est trop court. Il doit contenir au moins 100 caractères.");
+                return true;
+            }
+            session.pendingCustomText = msg.text;
+            session.customTextState = 'awaiting_name';
+            await bot.sendMessage(msg.chat.id, "Donnez un nom à votre texte :");
+            return true;
+
+        case 'awaiting_name':
+            const textId = db.saveCustomText(msg.chat.id, msg.text, session.pendingCustomText);
+            session.customTextState = null;
+            session.pendingCustomText = null;
+            await bot.sendMessage(msg.chat.id,
+                "✅ Texte enregistré avec succès!\n\n" +
+                "Vous pouvez maintenant le retrouver dans 'Mes textes' ou 'Textes préenregistrés'.");
+            return true;
+    }
+    return false;
+}
+
+async function showPresetTexts(bot, chatId) {
+    const texts = db.getAllCustomTexts();
+
+    if (texts.length === 0) {
+        await bot.sendMessage(chatId,
+            "Aucun texte préenregistré disponible.\n" +
+            "Soyez le premier à en ajouter un avec l'option 'Nouveau texte' !");
+        return;
+    }
+
+    const keyboard = {
+        inline_keyboard: texts.map(text => [{
+            text: `${text.name} (par ${getUsernameById(text.createdBy)})`,
+            callback_data: `start_custom_${text.id}`
+        }]).concat([[
+            { text: "⬅️ Retour", callback_data: "show_custom_menu" }
+        ]])
+    };
+
+    await bot.sendMessage(chatId,
+        "🎯 𝗧𝗘𝗫𝗧𝗘𝗦 𝗣𝗥É𝗘𝗡𝗥𝗘𝗚𝗜𝗦𝗧𝗥É𝗦\n\n" +
+        "Choisissez un texte pour commencer l'entraînement :",
+        { reply_markup: keyboard });
+}
+
+async function showPersonalTexts(bot, chatId) {
+    const texts = db.getUserCustomTexts(chatId);
+
+    if (texts.length === 0) {
+        await bot.sendMessage(chatId,
+            "Vous n'avez pas encore de textes personnalisés.\n" +
+            "Utilisez l'option 'Nouveau texte' pour en ajouter !");
+        return;
+    }
+
+    const keyboard = {
+        inline_keyboard: texts.map(text => [{
+            text: text.name,
+            callback_data: `start_custom_${text.id}`
+        }]).concat([[
+            { text: "⬅️ Retour", callback_data: "show_custom_menu" }
+        ]])
+    };
+
+    await bot.sendMessage(chatId,
+        "📚 𝗠𝗘𝗦 𝗧𝗘𝗫𝗧𝗘𝗦\n\n" +
+        "Choisissez un texte pour commencer l'entraînement :",
+        { reply_markup: keyboard });
+}
+
+async function showCustomTextRankings(bot, chatId) {
+    const texts = db.getAllCustomTexts();
+
+    if (texts.length === 0) {
+        await bot.sendMessage(chatId,
+            "Aucun texte disponible pour afficher les classements.\n" +
+            "Ajoutez d'abord des textes !");
+        return;
+    }
+
+    const keyboard = {
+        inline_keyboard: texts.map(text => [{
+            text: text.name,
+            callback_data: `ranking_custom_${text.id}`
+        }]).concat([[
+            { text: "⬅️ Retour", callback_data: "show_custom_menu" }
+        ]])
+    };
+
+    await bot.sendMessage(chatId,
+        "🏆 𝗖𝗟𝗔𝗦𝗦𝗘𝗠𝗘𝗡𝗧𝗦 𝗣𝗔𝗥 𝗧𝗘𝗫𝗧𝗘\n\n" +
+        "Sélectionnez un texte pour voir son classement :",
+        { reply_markup: keyboard });
+}
+
+async function showTextRanking(bot, chatId, textId) {
+    const text = db.getCustomText(textId);
+    if (!text) {
+        await bot.sendMessage(chatId, "Texte non trouvé.");
+        return;
+    }
+
+    const stats = db.getCustomTextStats(textId);
+    let message = `🏆 𝗖𝗟𝗔𝗦𝗦𝗘𝗠𝗘𝗡𝗧: ${text.name}\n\n`;
+
+    if (stats.length === 0) {
+        message += "Aucune performance enregistrée pour ce texte.";
+    } else {
+        stats.slice(0, 10).forEach((stat, index) => {
+            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '  ';
+            message += `${medal} ${index + 1}. ${stat.username}\n`;
+            message += `   ⚡ WPM: ${Math.round(stat.wpm)}\n`;
+            message += `   🎯 Précision: ${Math.round(stat.accuracy)}%\n\n`;
+        });
+    }
+
+    const keyboard = {
+        inline_keyboard: [[
+            { text: "⬅️ Retour aux classements", callback_data: "custom_rankings" }
+        ]]
+    };
+
+    await bot.sendMessage(chatId, message, { reply_markup: keyboard });
+}
+
+async function startCustomTest(bot, chatId, textId) {
+    const text = db.getCustomText(textId);
+    if (!text) {
+        await bot.sendMessage(chatId, "Texte non trouvé.");
+        return;
+    }
+
+    const keyboard = {
+        inline_keyboard: [
+            [
+                { text: "😊 Facile", callback_data: `custom_difficulty_${textId}_easy` },
+                { text: "😎 Normal", callback_data: `custom_difficulty_${textId}_normal` },
+                { text: "😈 Challenge", callback_data: `custom_difficulty_${textId}_hard` }
+            ],
+            [{ text: "⬅️ Retour", callback_data: "show_custom_menu" }]
+        ]
+    };
+
+    await bot.sendMessage(chatId,
+        "🎯 𝗖𝗛𝗢𝗜𝗫 𝗗𝗘 𝗟𝗔 𝗗𝗜𝗙𝗙𝗜𝗖𝗨𝗟𝗧É\n\n" +
+        "• Facile : Objectif rang C\n" +
+        "• Normal : Objectif rang B-A\n" +
+        "• Challenge : Objectif rang S\n\n" +
+        "Choisissez votre niveau :",
+        { reply_markup: keyboard });
+}
+
+async function startCustomTestWithDifficulty(bot, chatId, textId, difficulty) {
+    const text = db.getCustomText(textId);
+    if (!text) {
+        await bot.sendMessage(chatId, "Texte non trouvé.");
+        return;
+    }
+
+    // Découper le texte en segments
+    const segments = splitTextIntoSegments(text.content);
+    const username = (await bot.getChat(chatId)).username || `User_${chatId}`;
+
+    // Configurer le rang en fonction de la difficulté
+    const rank = difficulty === 'easy' ? 'C' :
+                difficulty === 'normal' ? 'B' : 'S';
+
+    db.startTest(chatId, 'custom', segments, username);
+    db.saveUser(chatId, { selectedRank: rank });
+
+    await bot.sendMessage(chatId,
+        "📝 𝗧𝗘𝗦𝗧 𝗣𝗘𝗥𝗦𝗢𝗡𝗡𝗔𝗟𝗜𝗦É\n\n" +
+        `Difficulté: ${difficulty}\n` +
+        `Objectif: Rang ${rank}\n\n` +
+        "Écrivez 'next' pour commencer.");
+}
+
+// Utility function to split text into segments
+function splitTextIntoSegments(text) {
+    // Nettoyer le texte
+    const cleanText = text.replace(/\s+/g, ' ').trim();
+
+    // Diviser en phrases
+    const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+
+    // Sélectionner 10 segments aléatoires
+    const segments = [];
+    const maxSegments = 10;
+
+    while (segments.length < maxSegments && sentences.length > 0) {
+        const randomIndex = Math.floor(Math.random() * sentences.length);
+        const segment = sentences[randomIndex].trim();
+
+        // Vérifier la longueur du segment
+        if (segment.length >= 10 && segment.length <= 100) {
+            segments.push(segment);
+            sentences.splice(randomIndex, 1);
+        }
+    }
+
+    // Si on n'a pas assez de segments, répéter certains
+    while (segments.length < maxSegments) {
+        const randomSegment = segments[Math.floor(Math.random() * segments.length)];
+        segments.push(randomSegment);
+    }
+
+    return segments;
+}
+
+function getUsernameById(userId) {
+    const user = db.getUser(userId);
+    return user?.username || `User_${userId}`;
+}
+
 module.exports = {
     showMenu,
     showPrecisionMenu,
@@ -723,5 +1015,15 @@ module.exports = {
             "• Respirez et restez concentré");
     },
     showStats,
-    showUserList
+    showUserList,
+    showLeaderboard,
+    showCustomMenu,
+    handleNewCustomText,
+    handleCustomTextInput,
+    showPresetTexts,
+    showPersonalTexts,
+    showCustomTextRankings,
+    showTextRanking,
+    startCustomTest,
+    startCustomTestWithDifficulty
 };

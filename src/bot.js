@@ -249,6 +249,19 @@ bot.on('callback_query', async (query) => {
             await bot.answerCallbackQuery(query.id);
             return;
         }
+        // Handle custom text related callbacks
+        if (query.data.startsWith('start_custom_')) {
+            const textId = query.data.split('_')[2];
+            await commands.startCustomTest(bot, chatId, textId);
+        }
+        else if (query.data.startsWith('ranking_custom_')) {
+            const textId = query.data.split('_')[2];
+            await commands.showTextRanking(bot, chatId, textId);
+        }
+        else if (query.data.startsWith('custom_difficulty_')) {
+            const [, , textId, difficulty] = query.data.split('_');
+            await commands.startCustomTestWithDifficulty(bot, chatId, textId, difficulty);
+        }
 
         switch (query.data) {
             case 'show_menu':
@@ -271,6 +284,18 @@ bot.on('callback_query', async (query) => {
                 break;
             case 'speed_training':
                 await commands.startSpeedTraining(bot, chatId);
+                break;
+            case 'custom_new':
+                await commands.handleNewCustomText(bot, chatId);
+                break;
+            case 'custom_preset':
+                await commands.showPresetTexts(bot, chatId);
+                break;
+            case 'custom_personal':
+                await commands.showPersonalTexts(bot, chatId);
+                break;
+            case 'custom_rankings':
+                await commands.showCustomTextRankings(bot, chatId);
                 break;
         }
 
@@ -344,13 +369,29 @@ handleCommand(/\/end/, async (msg) => {
     );
 });
 
-// Handle text messages for tests with enhanced session management
+// Handle /leaderboard command
+handleCommand(/\/leaderboard/, async (msg) => {
+    await commands.showLeaderboard(bot, msg.chat.id);
+});
+
+// Handle /custom command
+handleCommand(/\/custom/, async (msg) => {
+    await commands.showCustomMenu(bot, msg.chat.id);
+});
+
+
+// Ajouter le gestionnaire de messages pour les textes personnalisés
 bot.on('message', async (msg) => {
     if (msg.text && !msg.text.startsWith('/')) {
         const session = db.getUserSession(msg.chat.id);
         if (!session) return;
 
-        // Ne traiter que les messages pendant un test actif
+        // Handle custom text input first
+        if (await commands.handleCustomTextInput(bot, msg)) {
+            return;
+        }
+
+        // Continue with existing test response handling
         const test = db.getActiveTest(msg.chat.id);
         if (!test) return;
 

@@ -2,6 +2,8 @@
 const users = new Map();
 const activeTests = new Map();
 const userSessions = new Map();
+const customTexts = new Map(); // Stockage des textes personnalisés
+const customTextStats = new Map(); // Stockage des stats par texte
 
 // Session management
 function createUserSession(userId) {
@@ -239,6 +241,101 @@ const db = {
     // Session management
     getUserSession(userId) {
         return userSessions.get(userId);
+    },
+
+    // Custom text management
+    saveCustomText(userId, textName, content) {
+        const textId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        customTexts.set(textId, {
+            name: textName,
+            content,
+            createdBy: userId,
+            createdAt: Date.now()
+        });
+        console.log(`Custom text saved: ${textName} by user ${userId}`);
+        return textId;
+    },
+
+    getCustomText(textId) {
+        return customTexts.get(textId);
+    },
+
+    getAllCustomTexts() {
+        return Array.from(customTexts.entries()).map(([id, text]) => ({
+            id,
+            name: text.name,
+            createdBy: text.createdBy,
+            createdAt: text.createdAt
+        }));
+    },
+
+    getUserCustomTexts(userId) {
+        return Array.from(customTexts.entries())
+            .filter(([, text]) => text.createdBy === userId)
+            .map(([id, text]) => ({
+                id,
+                name: text.name,
+                createdAt: text.createdAt
+            }));
+    },
+
+    // Custom text stats management
+    saveCustomTextStats(textId, userId, stats) {
+        if (!customTextStats.has(textId)) {
+            customTextStats.set(textId, new Map());
+        }
+        const textStats = customTextStats.get(textId);
+        textStats.set(userId, {
+            ...stats,
+            timestamp: Date.now()
+        });
+        console.log(`Stats saved for text ${textId} by user ${userId}:`, stats);
+    },
+
+    getCustomTextStats(textId) {
+        const textStats = customTextStats.get(textId);
+        if (!textStats) return [];
+
+        return Array.from(textStats.entries()).map(([userId, stats]) => {
+            const user = this.getUser(userId);
+            return {
+                username: user?.username || `User_${userId}`,
+                ...stats
+            };
+        }).sort((a, b) => b.wpm - a.wpm); // Tri par WPM décroissant
+    },
+
+    getGlobalLeaderboard() {
+        const userStats = new Map();
+
+        // Collecter toutes les stats de tous les utilisateurs
+        users.forEach((userData, userId) => {
+            if (userData.stats) {
+                let bestWpm = 0;
+                let bestAccuracy = 0;
+
+                // Vérifier les stats de vitesse et de précision
+                if (userData.stats.speed) {
+                    bestWpm = Math.max(bestWpm, userData.stats.speed.bestWpm || 0);
+                    bestAccuracy = Math.max(bestAccuracy, userData.stats.speed.bestAccuracy || 0);
+                }
+                if (userData.stats.precision) {
+                    bestWpm = Math.max(bestWpm, userData.stats.precision.wpm || 0);
+                    bestAccuracy = Math.max(bestAccuracy, userData.stats.precision.bestAccuracy || 0);
+                }
+
+                // Ajouter les meilleures stats de l'utilisateur
+                userStats.set(userId, {
+                    username: userData.username || `User_${userId}`,
+                    bestWpm,
+                    bestAccuracy
+                });
+            }
+        });
+
+        // Convertir en tableau et trier par WPM
+        return Array.from(userStats.values())
+            .sort((a, b) => b.bestWpm - a.bestWpm);
     },
 
     // Cleanup function now handles both completed tests and inactive sessions
