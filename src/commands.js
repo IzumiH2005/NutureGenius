@@ -45,6 +45,11 @@ function releaseLock(chatId) {
     messageLocks.delete(chatId);
 }
 
+function getUsernameById(userId) {
+    const user = db.getUser(userId);
+    return user?.username || `User_${userId}`;
+}
+
 async function showMenu(bot, chatId) {
     console.log(`Showing menu for chat ${chatId}`);
 
@@ -770,81 +775,125 @@ async function handleNewCustomText(bot, chatId) {
         "Le texte doit contenir au moins 100 caractères.");
 }
 
+
 async function handleCustomTextInput(bot, msg) {
     const session = db.getUserSession(msg.chat.id);
     if (!session?.customTextState) return false;
 
-    switch (session.customTextState) {
-        case 'awaiting_text':
-            if (msg.text.length < 100) {
-                await bot.sendMessage(msg.chat.id, "⚠️ Le texte est trop court. Il doit contenir au moins 100 caractères.");
+    try {
+        switch (session.customTextState) {
+            case 'awaiting_text':
+                if (msg.text.length < 100) {
+                    await bot.sendMessage(msg.chat.id, 
+                        "⚠️ Le texte est trop court. Il doit contenir au moins 100 caractères.\n" +
+                        `Longueur actuelle : ${msg.text.length} caractères.`);
+                    return true;
+                }
+                session.pendingCustomText = msg.text;
+                session.customTextState = 'awaiting_name';
+                await bot.sendMessage(msg.chat.id, 
+                    "📝 Donnez un nom à votre texte :\n" +
+                    "(Ce nom sera visible par tous les utilisateurs)");
                 return true;
-            }
-            session.pendingCustomText = msg.text;
-            session.customTextState = 'awaiting_name';
-            await bot.sendMessage(msg.chat.id, "Donnez un nom à votre texte :");
-            return true;
 
-        case 'awaiting_name':
-            const textId = db.saveCustomText(msg.chat.id, msg.text, session.pendingCustomText);
-            session.customTextState = null;
-            session.pendingCustomText = null;
-            await bot.sendMessage(msg.chat.id,
-                "✅ Texte enregistré avec succès!\n\n" +
-                "Vous pouvez maintenant le retrouver dans 'Mes textes' ou 'Textes préenregistrés'.");
-            return true;
+            case 'awaiting_name':
+                if (!msg.text || msg.text.length > 50) {
+                    await bot.sendMessage(msg.chat.id, 
+                        "⚠️ Le nom doit faire entre 1 et 50 caractères.");
+                    return true;
+                }
+                const textId = db.saveCustomText(msg.chat.id, msg.text, session.pendingCustomText);
+                session.customTextState = null;
+                session.pendingCustomText = null;
+                await bot.sendMessage(msg.chat.id,
+                    "✅ Texte enregistré avec succès!\n\n" +
+                    "Vous pouvez maintenant :\n" +
+                    "• Le retrouver dans 'Mes textes'\n" +
+                    "• Le voir dans 'Textes préenregistrés'\n" +
+                    "• Commencer l'entraînement dessus");
+
+                // Proposer directement de commencer l'entraînement
+                const keyboard = {
+                    inline_keyboard: [
+                        [{ text: "▶️ Commencer l'entraînement", callback_data: `start_custom_${textId}` }],
+                        [{ text: "📝 Retour au menu custom", callback_data: "show_custom_menu" }]
+                    ]
+                };
+                await bot.sendMessage(msg.chat.id, "Que souhaitez-vous faire ?", { reply_markup: keyboard });
+                return true;
+        }
+    } catch (error) {
+        console.error('Error in handleCustomTextInput:', error);
+        await bot.sendMessage(msg.chat.id, 
+            "Une erreur est survenue lors de l'enregistrement du texte.\n" +
+            "Veuillez réessayer.");
+        session.customTextState = null;
+        session.pendingCustomText = null;
+        return true;
     }
     return false;
 }
 
 async function showPresetTexts(bot, chatId) {
-    const texts = db.getAllCustomTexts();
+    try {
+        const texts = db.getAllCustomTexts();
+        console.log(`Showing preset texts. Found ${texts.length} texts`);
 
-    if (texts.length === 0) {
+        if (texts.length === 0) {
+            await bot.sendMessage(chatId,
+                "📝 Aucun texte préenregistré disponible.\n" +
+                "Soyez le premier à en ajouter un avec l'option 'Nouveau texte' !");
+            return;
+        }
+
+        const keyboard = {
+            inline_keyboard: texts.map(text => [{
+                text: `${text.name} (par ${getUsernameById(text.createdBy)})`,
+                callback_data: `start_custom_${text.id}`
+            }]).concat([[
+                { text: "⬅️ Retour", callback_data: "show_custom_menu" }
+            ]])
+        };
+
         await bot.sendMessage(chatId,
-            "Aucun texte préenregistré disponible.\n" +
-            "Soyez le premier à en ajouter un avec l'option 'Nouveau texte' !");
-        return;
+            "🎯 𝗧𝗘𝗫𝗧𝗘𝗦 𝗣𝗥É𝗘𝗡𝗥𝗘𝗚𝗜𝗦𝗧𝗥É𝗦\n\n" +
+            "Choisissez un texte pour commencer l'entraînement :",
+            { reply_markup: keyboard });
+    } catch (error) {
+        console.error('Error in showPresetTexts:', error);
+        await bot.sendMessage(chatId, "Une erreur est survenue lors du chargement des textes.");
     }
-
-    const keyboard = {
-        inline_keyboard: texts.map(text => [{
-            text: `${text.name} (par ${getUsernameById(text.createdBy)})`,
-            callback_data: `start_custom_${text.id}`
-        }]).concat([[
-            { text: "⬅️ Retour", callback_data: "show_custom_menu" }
-        ]])
-    };
-
-    await bot.sendMessage(chatId,
-        "🎯 𝗧𝗘𝗫𝗧𝗘𝗦 𝗣𝗥É𝗘𝗡𝗥𝗘𝗚𝗜𝗦𝗧𝗥É𝗦\n\n" +
-        "Choisissez un texte pour commencer l'entraînement :",
-        { reply_markup: keyboard });
 }
 
 async function showPersonalTexts(bot, chatId) {
-    const texts = db.getUserCustomTexts(chatId);
+    try {
+        const texts = db.getUserCustomTexts(chatId);
+        console.log(`Showing personal texts for user ${chatId}. Found ${texts.length} texts`);
 
-    if (texts.length === 0) {
+        if (texts.length === 0) {
+            await bot.sendMessage(chatId,
+                "📚 Vous n'avez pas encore de textes personnalisés.\n" +
+                "Utilisez l'option 'Nouveau texte' pour en ajouter !");
+            return;
+        }
+
+        const keyboard = {
+            inline_keyboard: texts.map(text => [{
+                text: text.name,
+                callback_data: `start_custom_${text.id}`
+            }]).concat([[
+                { text: "⬅️ Retour", callback_data: "show_custom_menu" }
+            ]])
+        };
+
         await bot.sendMessage(chatId,
-            "Vous n'avez pas encore de textes personnalisés.\n" +
-            "Utilisez l'option 'Nouveau texte' pour en ajouter !");
-        return;
+            "📚 𝗠𝗘𝗦 𝗧𝗘𝗫𝗧𝗘𝗦\n\n" +
+            "Choisissez un texte pour commencer l'entraînement :",
+            { reply_markup: keyboard });
+    } catch (error) {
+        console.error('Error in showPersonalTexts:', error);
+        await bot.sendMessage(chatId, "Une erreur est survenue lors du chargement de vos textes.");
     }
-
-    const keyboard = {
-        inline_keyboard: texts.map(text => [{
-            text: text.name,
-            callback_data: `start_custom_${text.id}`
-        }]).concat([[
-            { text: "⬅️ Retour", callback_data: "show_custom_menu" }
-        ]])
-    };
-
-    await bot.sendMessage(chatId,
-        "📚 𝗠𝗘𝗦 𝗧𝗘𝗫𝗧𝗘𝗦\n\n" +
-        "Choisissez un texte pour commencer l'entraînement :",
-        { reply_markup: keyboard });
 }
 
 async function showCustomTextRankings(bot, chatId) {

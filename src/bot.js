@@ -285,6 +285,9 @@ bot.on('callback_query', async (query) => {
             case 'speed_training':
                 await commands.startSpeedTraining(bot, chatId);
                 break;
+            case 'show_custom_menu':
+                await commands.showCustomMenu(bot, chatId);
+                break;
             case 'custom_new':
                 await commands.handleNewCustomText(bot, chatId);
                 break;
@@ -296,6 +299,9 @@ bot.on('callback_query', async (query) => {
                 break;
             case 'custom_rankings':
                 await commands.showCustomTextRankings(bot, chatId);
+                break;
+            case 'show_leaderboard':
+                await commands.showLeaderboard(bot, chatId);
                 break;
         }
 
