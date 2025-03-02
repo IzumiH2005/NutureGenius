@@ -1,6 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const commands = require('./commands');
-const database = require('./database');
+const db = require('./database');
 
 // Add error handling for uncaught exceptions
 process.on('uncaughtException', (error) => {
@@ -19,11 +19,57 @@ if (!token) {
     throw new Error('TELEGRAM_BOT_TOKEN environment variable is not set');
 }
 
+let pollingErrors = 0;
+const MAX_POLLING_ERRORS = 5;
+let isPolling = false;
+
 const bot = new TelegramBot(token, {
-    polling: true
+    polling: false // Démarrage manuel du polling
 });
 
 console.log('Bot initialized successfully');
+
+// Function to start polling
+async function startPolling() {
+    if (isPolling) {
+        console.log('Polling already active');
+        return;
+    }
+
+    try {
+        console.log('Starting polling...');
+        await bot.stopPolling(); // Ensure no existing polling
+        db.cleanup(); // Clean up active tests
+        await bot.startPolling({
+            timeout: 10
+        });
+        isPolling = true;
+        pollingErrors = 0;
+        console.log('Polling started successfully');
+    } catch (error) {
+        console.error('Error starting polling:', error);
+        isPolling = false;
+    }
+}
+
+// Handle polling errors
+bot.on('polling_error', async (error) => {
+    console.error('Polling error:', error);
+    pollingErrors++;
+
+    if (pollingErrors >= MAX_POLLING_ERRORS) {
+        console.log('Too many polling errors, restarting polling...');
+        isPolling = false;
+        try {
+            await startPolling();
+        } catch (error) {
+            console.error('Error restarting polling:', error);
+        }
+    }
+});
+
+// Start initial polling
+startPolling().catch(console.error);
 
 // Handle /start command
 bot.onText(/\/start/, async (msg) => {
@@ -62,9 +108,11 @@ bot.on('callback_query', async (query) => {
 
     if (query.data.startsWith('user_stats_')) {
         const userId = query.data.split('_')[2];
-        const user = database.getUser(userId); // Assumed database.getUser exists
+        const user = db.getUser(userId);
         if (user) {
-            await commands.showStats(bot, chatId, user.username || `User ${user.id}`);
+            await commands.showStats(bot, chatId, user.username);
+        } else {
+            await bot.sendMessage(chatId, "Utilisateur non trouvé.");
         }
         return;
     }

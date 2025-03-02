@@ -91,19 +91,19 @@ précise comme une lame et rapide comme l'éclair.
 
 async function showPrecisionMenu(bot, chatId) {
     const menuText = `🎯 𝐌𝐨𝐝𝐞 𝐏𝐫é𝐜𝐢𝐬𝐢𝐨𝐧 - 白 (𝐒𝐡𝐢𝐫𝐨)
-    
+
 ━━━━━━━━━━━━━━━━━━━━━━━━
-    
+
 𝗟𝗔 𝗩𝗢𝗜𝗘 𝗗𝗘 𝗟𝗔 𝗣𝗥É𝗖𝗜𝗦𝗜𝗢𝗡
-    
+
 La précision est le fondement de la maîtrise.
 Un Shiro Oni doit maintenir une précision parfaite 
 même à grande vitesse.
-    
+
 💡 "𝘓𝘢 𝘷𝘪𝘵𝘦𝘴𝘴𝘦 𝘴𝘢𝘯𝘴 𝘱𝘳é𝘤𝘪𝘴𝘪𝘰𝘯 𝘯'𝘦𝘴𝘵 𝘲𝘶𝘦 𝘤𝘩𝘢𝘰𝘴"
-    
+
 ━━━━━━━━━━━━━━━━━━━━━━━━
-    
+
 𝗖𝗛𝗢𝗜𝗦𝗜𝗦𝗦𝗘𝗭 𝗩𝗢𝗧𝗥𝗘 É𝗣𝗥𝗘𝗨𝗩𝗘 :`;
 
     const keyboard = {
@@ -126,18 +126,18 @@ même à grande vitesse.
 
 async function showSpeedMenu(bot, chatId) {
     const menuText = `⚡ 𝐌𝐨𝐝𝐞 𝐕𝐢𝐭𝐞𝐬𝐬𝐞 - 鬼 (𝐎𝐧𝐢)
-    
+
 ━━━━━━━━━━━━━━━━━━━━━━━━
-    
+
 𝗟𝗔 𝗩𝗢𝗜𝗘 𝗗𝗘 𝗟𝗔 𝗩𝗜𝗧𝗘𝗦𝗦𝗘
-    
+
 La vitesse est le chemin vers la transcendance.
 Un véritable Oni frappe avec la rapidité de l'éclair.
-    
+
 💡 "𝘓𝘢 𝘷𝘪𝘵𝘦𝘴𝘴𝘦 𝘦𝘴𝘵 𝘭'𝘦𝘴𝘴𝘦𝘯𝘤𝘦 𝘥𝘶 𝘤𝘰𝘮𝘣𝘢𝘵"
-    
+
 ━━━━━━━━━━━━━━━━━━━━━━━━
-    
+
 𝗖𝗛𝗢𝗜𝗦𝗜𝗦𝗦𝗘𝗭 𝗩𝗢𝗧𝗥𝗘 É𝗣𝗥𝗘𝗨𝗩𝗘 :`;
 
     const keyboard = {
@@ -161,6 +161,8 @@ Un véritable Oni frappe avec la rapidité de l'éclair.
 async function showStats(bot, chatId, username) {
     console.log(`Showing stats for user ${username}`);
     const stats = db.getStats(chatId);
+    const userData = db.getUser(chatId);
+    const displayUsername = userData?.username || username || `User_${chatId}`;
 
     if (!stats) {
         await bot.sendMessage(chatId,
@@ -175,7 +177,7 @@ async function showStats(bot, chatId, username) {
 
     let statsMessage = "━━━━━━━━━━━━━━━━━━━━━━━━\n";
     statsMessage += "📊 𝗦𝗧𝗔𝗧𝗜𝗦𝗧𝗜𝗤𝗨𝗘𝗦\n\n";
-    statsMessage += `𝗨𝗧𝗜𝗟𝗜𝗦𝗔𝗧𝗘𝗨𝗥: ${username}\n\n`;
+    statsMessage += `𝗨𝗧𝗜𝗟𝗜𝗦𝗔𝗧𝗘𝗨𝗥: ${displayUsername}\n\n`;
 
     if (stats.precision) {
         statsMessage += "🎯 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗣𝗥É𝗖𝗜𝗦𝗜𝗢𝗡\n";
@@ -218,7 +220,7 @@ async function showUserList(bot, chatId) {
 
     const keyboard = {
         inline_keyboard: users.map(user => [{
-            text: user.username || `User ${user.id}`,
+            text: user.username || `User_${user.id}`,
             callback_data: `user_stats_${user.id}`
         }])
     };
@@ -234,7 +236,12 @@ async function showUserList(bot, chatId) {
 
 async function startPrecisionTest(bot, chatId) {
     const testWords = words.sort(() => 0.5 - Math.random()).slice(0, 10);
-    const username = (await bot.getChat(chatId)).username || `User_${chatId}`;
+    const chat = await bot.getChat(chatId);
+    const username = chat.username || `User_${chatId}`;
+
+    // Sauvegarder le username immédiatement
+    db.saveUser(chatId, { username });
+
     db.startTest(chatId, 'precision', testWords, username);
 
     const instructionsMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
@@ -260,7 +267,11 @@ async function startPrecisionTest(bot, chatId) {
 async function startSpeedTest(bot, chatId) {
     const testTexts = [];
     const desiredQuestions = 10;
-    const username = (await bot.getChat(chatId)).username || `User_${chatId}`;
+    const chat = await bot.getChat(chatId);
+    const username = chat.username || `User_${chatId}`;
+
+    // Sauvegarder le username immédiatement
+    db.saveUser(chatId, { username });
 
     // Tentatives de génération avec Gemini et fallback sur les noms
     for (let i = 0; i < desiredQuestions; i++) {

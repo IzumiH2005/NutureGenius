@@ -2,12 +2,22 @@
 const users = new Map();
 const activeTests = new Map();
 
+// Fonction pour nettoyer les tests actifs
+function cleanupActiveTests() {
+    activeTests.clear();
+    console.log('Active tests cleared');
+}
+
 const db = {
     // User management
     saveUser(userId, data) {
         const existingData = users.get(userId) || {};
+        // Ensure username is always updated if provided
+        if (data.username) {
+            existingData.username = data.username;
+        }
         users.set(userId, { ...existingData, ...data });
-        console.log(`User data saved for ${userId}:`, data);
+        console.log(`User data saved for ${userId} (${data.username || 'Unknown'}):`, data);
     },
 
     getUser(userId) {
@@ -19,12 +29,19 @@ const db = {
     getAllUsers() {
         return Array.from(users.entries()).map(([id, data]) => ({
             id,
+            username: data.username || `User_${id}`,
             ...data
         }));
     },
 
     // Active test management
     startTest(userId, testType, words, username) {
+        // Nettoyer tout test existant pour cet utilisateur
+        if (activeTests.has(userId)) {
+            console.log(`Cleaning up existing test for user ${userId}`);
+            activeTests.delete(userId);
+        }
+
         // Sauvegarder le username immédiatement
         this.saveUser(userId, { username });
 
@@ -39,7 +56,7 @@ const db = {
             errors: 0,
             successCount: 0,
             totalTests: words.length,
-            username // Stocker le username dans le test actif
+            username
         });
     },
 
@@ -75,9 +92,9 @@ const db = {
         console.log(`Attempting to save stats for user ${username} (${userId})`);
 
         // Get existing user data or create new entry
-        const userData = users.get(userId) || { username, stats: {} };
+        const userData = users.get(userId) || { stats: {} };
 
-        // Ensure username is always updated
+        // Always update username
         userData.username = username;
 
         // Remove '_training' suffix if present for stats storage
@@ -101,7 +118,10 @@ const db = {
         const userData = users.get(userId);
         console.log(`Retrieving stats for user ${userId}:`, userData);
         return userData ? userData.stats : null;
-    }
+    },
+
+    // Cleanup function
+    cleanup: cleanupActiveTests
 };
 
 module.exports = db;
