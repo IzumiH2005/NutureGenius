@@ -114,6 +114,13 @@ bot.onText(/\/user/, async (msg) => {
     console.log(`User command received from chat ${msg.chat.id}`);
     if (msg.from.id.toString() === '6419892672') {
         await commands.showUserList(bot, msg.chat.id);
+    } else {
+        await bot.sendMessage(msg.chat.id, 
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+            "⛔ 𝗔𝗖𝗖𝗘𝗦 𝗥𝗘𝗙𝗨𝗦É\n\n" +
+            "Cette commande est réservée aux administrateurs.\n" +
+            "━━━━━━━━━━━━━━━━━━━━━━━━"
+        );
     }
 });
 

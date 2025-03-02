@@ -50,11 +50,9 @@ précise comme une lame et rapide comme l'éclair.
 📜 𝗖𝗢𝗠𝗠𝗔𝗡𝗗𝗘𝗦 𝗣𝗥𝗜𝗡𝗖𝗜𝗣𝗔𝗟𝗘𝗦 :
 
 /training - 🥋 Menu d'entraînement complet
-/duel - ⚔️ Défier un adversaire en duel de vitesse
 /stats - 📊 Analyser vos performances
-/ranking - 🏆 Classement des maîtres Shiro Oni
-/settings - ⚙️ Personnaliser votre expérience
 /help - 📚 Guide détaillé et techniques avancées
+/user - 👑 Administration (réservé aux administrateurs)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -93,19 +91,19 @@ précise comme une lame et rapide comme l'éclair.
 
 async function showPrecisionMenu(bot, chatId) {
     const menuText = `🎯 𝐌𝐨𝐝𝐞 𝐏𝐫é𝐜𝐢𝐬𝐢𝐨𝐧 - 白 (𝐒𝐡𝐢𝐫𝐨)
-
+    
 ━━━━━━━━━━━━━━━━━━━━━━━━
-
+    
 𝗟𝗔 𝗩𝗢𝗜𝗘 𝗗𝗘 𝗟𝗔 𝗣𝗥É𝗖𝗜𝗦𝗜𝗢𝗡
-
+    
 La précision est le fondement de la maîtrise.
 Un Shiro Oni doit maintenir une précision parfaite 
 même à grande vitesse.
-
+    
 💡 "𝘓𝘢 𝘷𝘪𝘵𝘦𝘴𝘴𝘦 𝘴𝘢𝘯𝘴 𝘱𝘳é𝘤𝘪𝘴𝘪𝘰𝘯 𝘯'𝘦𝘴𝘵 𝘲𝘶𝘦 𝘤𝘩𝘢𝘰𝘴"
-
+    
 ━━━━━━━━━━━━━━━━━━━━━━━━
-
+    
 𝗖𝗛𝗢𝗜𝗦𝗜𝗦𝗦𝗘𝗭 𝗩𝗢𝗧𝗥𝗘 É𝗣𝗥𝗘𝗨𝗩𝗘 :`;
 
     const keyboard = {
@@ -128,18 +126,18 @@ même à grande vitesse.
 
 async function showSpeedMenu(bot, chatId) {
     const menuText = `⚡ 𝐌𝐨𝐝𝐞 𝐕𝐢𝐭𝐞𝐬𝐬𝐞 - 鬼 (𝐎𝐧𝐢)
-
+    
 ━━━━━━━━━━━━━━━━━━━━━━━━
-
+    
 𝗟𝗔 𝗩𝗢𝗜𝗘 𝗗𝗘 𝗟𝗔 𝗩𝗜𝗧𝗘𝗦𝗦𝗘
-
+    
 La vitesse est le chemin vers la transcendance.
 Un véritable Oni frappe avec la rapidité de l'éclair.
-
+    
 💡 "𝘓𝘢 𝘷𝘪𝘵𝘦𝘴𝘴𝘦 𝘦𝘴𝘵 𝘭'𝘦𝘴𝘴𝘦𝘯𝘤𝘦 𝘥𝘶 𝘤𝘰𝘮𝘣𝘢𝘵"
-
+    
 ━━━━━━━━━━━━━━━━━━━━━━━━
-
+    
 𝗖𝗛𝗢𝗜𝗦𝗜𝗦𝗦𝗘𝗭 𝗩𝗢𝗧𝗥𝗘 É𝗣𝗥𝗘𝗨𝗩𝗘 :`;
 
     const keyboard = {
@@ -197,18 +195,35 @@ async function showUserList(bot, chatId) {
     const users = db.getAllUsers();
 
     if (users.length === 0) {
-        await bot.sendMessage(chatId, "Aucun utilisateur enregistré.");
+        await bot.sendMessage(chatId, 
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+            "👑 𝗔𝗗𝗠𝗜𝗡𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡\n\n" +
+            "Aucun utilisateur enregistré.\n" +
+            "━━━━━━━━━━━━━━━━━━━━━━━━"
+        );
         return;
     }
 
-    const keyboard = {
-        inline_keyboard: users.map(user => [{
-            text: user.username || `User ${user.id}`,
-            callback_data: `user_stats_${user.id}`
-        }])
-    };
+    let userListMessage = "━━━━━━━━━━━━━━━━━━━━━━━━\n";
+    userListMessage += "👑 𝗔𝗗𝗠𝗜𝗡𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡\n\n";
+    userListMessage += "📊 𝗟𝗜𝗦𝗧𝗘 𝗗𝗘𝗦 𝗨𝗧𝗜𝗟𝗜𝗦𝗔𝗧𝗘𝗨𝗥𝗦\n\n";
 
-    await bot.sendMessage(chatId, "Liste des utilisateurs:", { reply_markup: keyboard });
+    users.forEach((user, index) => {
+        userListMessage += `${index + 1}. ${user.username || `User ${user.id}`}\n`;
+        if (user.stats) {
+            if (user.stats.precision) {
+                userListMessage += `   📝 Précision: ${user.stats.precision.accuracy}% | ⚡ WPM: ${user.stats.precision.wpm} | 🏆 Rang: ${user.stats.precision.rank}\n`;
+            }
+            if (user.stats.speed) {
+                userListMessage += `   🚀 Vitesse: ${user.stats.speed.accuracy}% | ⚡ WPM: ${user.stats.speed.wpm} | 🏆 Rang: ${user.stats.speed.rank}\n`;
+            }
+        }
+        userListMessage += "\n";
+    });
+
+    userListMessage += "━━━━━━━━━━━━━━━━━━━━━━━━";
+
+    await bot.sendMessage(chatId, userListMessage);
 }
 
 async function startPrecisionTest(bot, chatId) {
