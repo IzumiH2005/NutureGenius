@@ -2,10 +2,21 @@
 const users = new Map();
 const activeTests = new Map();
 
-// Fonction pour nettoyer les tests actifs
+// Fonction pour nettoyer uniquement les tests terminés
 function cleanupActiveTests() {
-    activeTests.clear();
-    console.log('Active tests cleared');
+    const activeTestsArray = Array.from(activeTests.entries());
+    activeTestsArray.forEach(([userId, test]) => {
+        // Ne nettoie que les tests qui sont terminés (currentIndex >= words.length)
+        if (test.currentIndex >= test.words.length) {
+            if (test.countdownInterval) {
+                clearInterval(test.countdownInterval);
+                test.countdownInterval = null;
+            }
+            activeTests.delete(userId);
+            console.log(`Cleaned up completed test for user ${userId}`);
+        }
+    });
+    console.log('Cleanup of completed tests finished');
 }
 
 const db = {
@@ -36,9 +47,18 @@ const db = {
 
     // Active test management
     startTest(userId, testType, words, username) {
-        // Nettoyer tout test existant pour cet utilisateur
-        if (activeTests.has(userId)) {
-            console.log(`Cleaning up existing test for user ${userId}`);
+        // Si un test existe déjà et n'est pas terminé, on le conserve
+        const existingTest = activeTests.get(userId);
+        if (existingTest && existingTest.currentIndex < existingTest.words.length) {
+            console.log(`Preserving existing test for user ${userId}`);
+            return;
+        }
+
+        // Nettoyer l'ancien test s'il existe
+        if (existingTest) {
+            if (existingTest.countdownInterval) {
+                clearInterval(existingTest.countdownInterval);
+            }
             activeTests.delete(userId);
         }
 
@@ -56,7 +76,8 @@ const db = {
             errors: 0,
             successCount: 0,
             totalTests: words.length,
-            username
+            username,
+            countdownInterval: null
         });
     },
 
@@ -82,8 +103,15 @@ const db = {
 
     endTest(userId) {
         const test = activeTests.get(userId);
-        activeTests.delete(userId);
-        console.log(`Ending test for user ${test?.username} (${userId})`, test);
+        if (test && test.countdownInterval) {
+            clearInterval(test.countdownInterval);
+            test.countdownInterval = null;
+        }
+        // Ne supprime le test que s'il est terminé
+        if (test && test.currentIndex >= test.words.length) {
+            activeTests.delete(userId);
+            console.log(`Test completed and removed for user ${test?.username} (${userId})`);
+        }
         return test;
     },
 
@@ -120,7 +148,7 @@ const db = {
         return userData ? userData.stats : null;
     },
 
-    // Cleanup function
+    // Cleanup function now only cleans completed tests
     cleanup: cleanupActiveTests
 };
 

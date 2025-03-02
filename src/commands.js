@@ -30,6 +30,21 @@ function calculateTimeAllowed(rank, wordLength) {
     return baseTimeSeconds + ((REACTION_TIME_MS + KEY_PRESS_TIME_MS) / 1000);
 }
 
+// Gestion des verrous pour éviter les doubles messages
+const messageLocks = new Map();
+
+function acquireLock(chatId) {
+    if (messageLocks.get(chatId)) {
+        return false;
+    }
+    messageLocks.set(chatId, true);
+    return true;
+}
+
+function releaseLock(chatId) {
+    messageLocks.delete(chatId);
+}
+
 async function showMenu(bot, chatId) {
     console.log(`Showing menu for chat ${chatId}`);
 
@@ -412,103 +427,124 @@ async function generateSpeedTestWords() {
     return testTexts;
 }
 
-// Dans la fonction handleTestResponse, modifions la vérification de 'next'
+// Modifier la fonction handleTestResponse pour gérer les verrous
 async function handleTestResponse(bot, msg) {
     const test = db.getActiveTest(msg.chat.id);
     if (!test) return;
 
-    console.log(`Handling test response for user ${test.username} (${msg.chat.id})`);
-
-    // Liste des variations acceptables de "next"
-    const nextCommands = ['next', 'nex', 'newt', 'nexr', 'nxt'];
-    if (nextCommands.includes(msg.text.toLowerCase())) {
-        if (test.currentIndex >= test.words.length) {
-            await finishTest(bot, msg.chat.id);
-            return;
-        }
-
-        const startTime = now();
-        test.startTime = startTime;
-
-        const currentWord = test.words[test.currentIndex];
-        const user = db.getUser(msg.chat.id);
-
-        if (user?.selectedRank && test.type.includes('training')) {
-            const timeAllowed = calculateTimeAllowed(user.selectedRank, currentWord.length);
-            test.timeAllowed = timeAllowed;
-
-            // Start countdown
-            const countdownMsg = await bot.sendMessage(msg.chat.id,
-                `Q/ ${currentWord}\nTemps restant: ${timeAllowed.toFixed(1)}s`
-            );
-
-            // Update countdown
-            const interval = setInterval(async () => {
-                const elapsed = (now() - startTime) / 1000;
-                const remaining = timeAllowed - elapsed;
-
-                if (remaining <= 0) {
-                    clearInterval(interval);
-                    await bot.editMessageText(
-                        `Q/ ${currentWord}\nTemps écoulé! ⏰`,
-                        { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
-                    );
-                    test.currentIndex++;
-                    await bot.sendMessage(msg.chat.id, "Écrivez 'next' pour continuer.");
-                } else {
-                    await bot.editMessageText(
-                        `Q/ ${currentWord}\nTemps restant: ${remaining.toFixed(1)}s`,
-                        { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
-                    );
-                }
-            }, 1000);
-
-            test.countdownInterval = interval;
-        } else {
-            await bot.sendMessage(msg.chat.id, `Q/ ${currentWord}`);
-        }
+    // Vérifier si un message est en cours de traitement
+    if (!acquireLock(msg.chat.id)) {
+        console.log(`Message skipped for chat ${msg.chat.id} - lock active`);
         return;
     }
 
-    // Clear any existing countdown
-    if (test.countdownInterval) {
-        clearInterval(test.countdownInterval);
-    }
+    console.log(`Handling test response for user ${test.username} (${msg.chat.id})`);
 
-    const currentWord = test.words[test.currentIndex];
-    const endTime = now();
-    const responseTime = (endTime - test.startTime) / 1000;
-    const adjustedTime = responseTime - ((REACTION_TIME_MS + KEY_PRESS_TIME_MS) / 1000);
+    try {
+        // Liste des variations acceptables de "next"
+        const nextCommands = ['next', 'nex', 'newt', 'nexr', 'nxt'];
+        if (nextCommands.includes(msg.text.toLowerCase())) {
+            if (test.currentIndex >= test.words.length) {
+                await finishTest(bot, msg.chat.id);
+                return;
+            }
 
-    console.log(`Processing response for word "${currentWord}" from user ${test.username}`);
+            // Nettoyer l'intervalle existant si présent
+            if (test.countdownInterval) {
+                clearInterval(test.countdownInterval);
+                test.countdownInterval = null;
+            }
 
-    const accuracy = typingTest.calculateAccuracy(currentWord, msg.text);
-    const wpm = typingTest.calculateWPM(msg.text, adjustedTime);
+            const startTime = now();
+            test.startTime = startTime;
 
-    // En mode vitesse, seul le WPM compte pour le succès
-    let success = test.type.includes('speed') ?
-        wpm >= 20 : // Seuil minimum de WPM pour le mode vitesse
-        accuracy >= 70; // Seuil de précision pour le mode précision
+            const currentWord = test.words[test.currentIndex];
+            const user = db.getUser(msg.chat.id);
 
-    if (test.type.includes('training')) {
-        const user = db.getUser(msg.chat.id);
-        if (user?.selectedRank) {
-            success = test.type.includes('speed') ?
-                wpm >= 20 && responseTime <= test.timeAllowed :
-                accuracy >= 70 && responseTime <= test.timeAllowed;
+            if (user?.selectedRank && test.type.includes('training')) {
+                const timeAllowed = calculateTimeAllowed(user.selectedRank, currentWord.length);
+                test.timeAllowed = timeAllowed;
+
+                // Start countdown
+                const countdownMsg = await bot.sendMessage(msg.chat.id,
+                    `Q/ ${currentWord}\nTemps restant: ${timeAllowed.toFixed(1)}s`
+                );
+
+                // Update countdown
+                const interval = setInterval(async () => {
+                    const elapsed = (now() - startTime) / 1000;
+                    const remaining = timeAllowed - elapsed;
+
+                    if (remaining <= 0) {
+                        clearInterval(interval);
+                        try {
+                            await bot.editMessageText(
+                                `Q/ ${currentWord}\nTemps écoulé! ⏰`,
+                                { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
+                            );
+                        } catch (error) {
+                            console.error('Error updating countdown message:', error);
+                        }
+                        test.currentIndex++;
+                        await bot.sendMessage(msg.chat.id, "Écrivez 'next' pour continuer.");
+                    } else {
+                        try {
+                            await bot.editMessageText(
+                                `Q/ ${currentWord}\nTemps restant: ${remaining.toFixed(1)}s`,
+                                { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
+                            );
+                        } catch (error) {
+                            console.error('Error updating countdown message:', error);
+                        }
+                    }
+                }, 1000);
+
+                test.countdownInterval = interval;
+            } else {
+                await bot.sendMessage(msg.chat.id, `Q/ ${currentWord}`);
+            }
+            return;
         }
-    }
 
-    db.updateTestResult(msg.chat.id, {
-        word: currentWord,
-        response: msg.text,
-        time: responseTime,
-        accuracy,
-        wpm,
-        success
-    });
+        // Clear any existing countdown
+        if (test.countdownInterval) {
+            clearInterval(test.countdownInterval);
+            test.countdownInterval = null;
+        }
 
-    const resultMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
+        const currentWord = test.words[test.currentIndex];
+        const endTime = now();
+        const responseTime = (endTime - test.startTime) / 1000;
+        const adjustedTime = responseTime - ((REACTION_TIME_MS + KEY_PRESS_TIME_MS) / 1000);
+
+        console.log(`Processing response for word "${currentWord}" from user ${test.username}`);
+
+        const accuracy = typingTest.calculateAccuracy(currentWord, msg.text);
+        const wpm = typingTest.calculateWPM(msg.text, adjustedTime);
+
+        let success = test.type.includes('speed') ?
+            wpm >= 20 :
+            accuracy >= 70;
+
+        if (test.type.includes('training')) {
+            const user = db.getUser(msg.chat.id);
+            if (user?.selectedRank) {
+                success = test.type.includes('speed') ?
+                    wpm >= 20 && responseTime <= test.timeAllowed :
+                    accuracy >= 70 && responseTime <= test.timeAllowed;
+            }
+        }
+
+        db.updateTestResult(msg.chat.id, {
+            word: currentWord,
+            response: msg.text,
+            time: responseTime,
+            accuracy,
+            wpm,
+            success
+        });
+
+        const resultMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
 RÉСУЛТАТЫ :
 
 🎯 Précision : ${Math.round(accuracy)}%
@@ -521,12 +557,16 @@ ${success ? '✅ Succès!' : '❌ Essayez encore!'}
 
 Écrivez 'next' pour continuer.`;
 
-    await bot.sendMessage(msg.chat.id, resultMessage);
+        await bot.sendMessage(msg.chat.id, resultMessage);
 
-    test.currentIndex++;
+        test.currentIndex++;
 
-    if (test.currentIndex >= test.words.length) {
-        await finishTest(bot, msg.chat.id);
+        if (test.currentIndex >= test.words.length) {
+            await finishTest(bot, msg.chat.id);
+        }
+    } finally {
+        // Toujours libérer le verrou à la fin
+        releaseLock(msg.chat.id);
     }
 }
 

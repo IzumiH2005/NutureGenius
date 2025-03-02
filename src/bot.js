@@ -23,6 +23,58 @@ let pollingErrors = 0;
 const MAX_POLLING_ERRORS = 5;
 let isPolling = false;
 
+// Message cooldown system
+const messageCooldowns = new Map();
+const COOLDOWN_TIME = 1000; // 1 second cooldown
+
+function isOnCooldown(chatId, messageType) {
+    const key = `${chatId}_${messageType}`;
+    const lastTime = messageCooldowns.get(key);
+    const now = Date.now();
+
+    if (lastTime && now - lastTime < COOLDOWN_TIME) {
+        return true;
+    }
+
+    messageCooldowns.set(key, now);
+    return false;
+}
+
+// Message queue system
+const messageQueue = new Map();
+const QUEUE_PROCESS_INTERVAL = 500; // Process queue every 500ms
+
+function addToMessageQueue(chatId, message, options = {}) {
+    if (!messageQueue.has(chatId)) {
+        messageQueue.set(chatId, []);
+    }
+    messageQueue.get(chatId).push({ message, options });
+}
+
+async function processMessageQueue(chatId) {
+    const queue = messageQueue.get(chatId);
+    if (!queue || queue.length === 0) return;
+
+    const { message, options } = queue.shift();
+    try {
+        await bot.sendMessage(chatId, message, options);
+    } catch (error) {
+        console.error('Error sending queued message:', error);
+    }
+
+    if (queue.length === 0) {
+        messageQueue.delete(chatId);
+    }
+}
+
+// Process message queues periodically
+setInterval(() => {
+    for (const chatId of messageQueue.keys()) {
+        processMessageQueue(chatId);
+    }
+}, QUEUE_PROCESS_INTERVAL);
+
+
 const bot = new TelegramBot(token, {
     polling: false // Démarrage manuel du polling
 });
@@ -39,7 +91,7 @@ async function startPolling() {
     try {
         console.log('Starting polling...');
         await bot.stopPolling(); // Ensure no existing polling
-        db.cleanup(); // Clean up active tests
+        // Removed db.cleanup() call to preserve active tests
         await bot.startPolling({
             timeout: 10
         });
@@ -73,6 +125,8 @@ startPolling().catch(console.error);
 
 // Handle /start command
 bot.onText(/\/start/, async (msg) => {
+    if (isOnCooldown(msg.chat.id, 'start')) return;
+
     const chatId = msg.chat.id;
     let progress = 0;
     console.log(`Start command received from chat ${chatId}`);
@@ -82,21 +136,26 @@ bot.onText(/\/start/, async (msg) => {
     const interval = setInterval(async () => {
         progress += 10;
         if (progress <= 100) {
-            await bot.editMessageText(`Load...${progress}%`, {
-                chat_id: chatId,
-                message_id: loadingMsg.message_id
-            });
+            try {
+                await bot.editMessageText(`Load...${progress}%`, {
+                    chat_id: chatId,
+                    message_id: loadingMsg.message_id
+                });
+            } catch (error) {
+                console.error('Error updating loading message:', error);
+                clearInterval(interval);
+            }
         } else {
             clearInterval(interval);
-            await bot.sendMessage(
-                chatId,
-                "Ce bot est un Bot spécial d'entraînement pour la vitesse et la précision. Cliquez sur continuer pour commencer.",
-                {
+            try {
+                addToMessageQueue(chatId, "Ce bot est un Bot spécial d'entraînement pour la vitesse et la précision. Cliquez sur continuer pour commencer.", {
                     reply_markup: {
                         inline_keyboard: [[{ text: "Continuer", callback_data: "show_menu" }]]
                     }
-                }
-            );
+                });
+            } catch (error) {
+                console.error('Error sending continue message:', error);
+            }
         }
     }, 500);
 });
@@ -104,75 +163,96 @@ bot.onText(/\/start/, async (msg) => {
 // Handle callback queries
 bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
+
+    // Check cooldown for callback queries
+    if (isOnCooldown(chatId, 'callback')) {
+        await bot.answerCallbackQuery(query.id);
+        return;
+    }
+
     console.log(`Callback query received: ${query.data} from chat ${chatId}`);
 
-    if (query.data.startsWith('user_stats_')) {
-        const userId = query.data.split('_')[2];
-        const user = db.getUser(userId);
-        if (user) {
-            await commands.showStats(bot, chatId, user.username);
-        } else {
-            await bot.sendMessage(chatId, "Utilisateur non trouvé.");
+    try {
+        if (query.data.startsWith('user_stats_')) {
+            const userId = query.data.split('_')[2];
+            const user = db.getUser(userId);
+            if (user) {
+                await commands.showStats(bot, chatId, user.username);
+            } else {
+                await bot.sendMessage(chatId, "Utilisateur non trouvé.");
+            }
+            await bot.answerCallbackQuery(query.id);
+            return;
         }
-        return;
-    }
 
-    if (query.data.startsWith('precision_training_') || query.data.startsWith('speed_training_')) {
-        const [type, , rank] = query.data.split('_');
-        await commands.startTrainingWithRank(bot, chatId, type, rank);
-        return;
-    }
+        if (query.data.startsWith('precision_training_') || query.data.startsWith('speed_training_')) {
+            const [type, , rank] = query.data.split('_');
+            await commands.startTrainingWithRank(bot, chatId, type, rank);
+            await bot.answerCallbackQuery(query.id);
+            return;
+        }
 
-    switch(query.data) {
-        case 'show_menu':
-            await commands.showMenu(bot, chatId);
-            break;
-        case 'mode_precision':
-            await commands.showPrecisionMenu(bot, chatId);
-            break;
-        case 'mode_speed':
-            await commands.showSpeedMenu(bot, chatId);
-            break;
-        case 'precision_test':
-            await commands.startPrecisionTest(bot, chatId);
-            break;
-        case 'precision_training':
-            await commands.startPrecisionTraining(bot, chatId);
-            break;
-        case 'speed_test':
-            await commands.startSpeedTest(bot, chatId);
-            break;
-        case 'speed_training':
-            await commands.startSpeedTraining(bot, chatId);
-            break;
+        switch (query.data) {
+            case 'show_menu':
+                await commands.showMenu(bot, chatId);
+                break;
+            case 'mode_precision':
+                await commands.showPrecisionMenu(bot, chatId);
+                break;
+            case 'mode_speed':
+                await commands.showSpeedMenu(bot, chatId);
+                break;
+            case 'precision_test':
+                await commands.startPrecisionTest(bot, chatId);
+                break;
+            case 'precision_training':
+                await commands.startPrecisionTraining(bot, chatId);
+                break;
+            case 'speed_test':
+                await commands.startSpeedTest(bot, chatId);
+                break;
+            case 'speed_training':
+                await commands.startSpeedTraining(bot, chatId);
+                break;
+        }
+
+        await bot.answerCallbackQuery(query.id);
+    } catch (error) {
+        console.error('Error handling callback query:', error);
+        await bot.answerCallbackQuery(query.id, { text: "Une erreur s'est produite" });
     }
 });
 
+// Handle commands with cooldown
+const handleCommand = async (command, handler) => {
+    bot.onText(command, async (msg) => {
+        if (isOnCooldown(msg.chat.id, command)) return;
+        console.log(`${command} command received from chat ${msg.chat.id}`);
+        await handler(msg);
+    });
+};
+
 // Handle /training command
-bot.onText(/\/training/, async (msg) => {
-    console.log(`Training command received from chat ${msg.chat.id}`);
+handleCommand(/\/training/, async (msg) => {
     await commands.showMenu(bot, msg.chat.id);
 });
 
 // Handle /help command
-bot.onText(/\/help/, async (msg) => {
-    console.log(`Help command received from chat ${msg.chat.id}`);
+handleCommand(/\/help/, async (msg) => {
     await commands.showHelp(bot, msg.chat.id);
 });
 
 // Handle /stats command
-bot.onText(/\/stats/, async (msg) => {
-    console.log(`Stats command received from chat ${msg.chat.id}`);
+handleCommand(/\/stats/, async (msg) => {
     await commands.showStats(bot, msg.chat.id, msg.from.username);
 });
 
 // Handle /user command (admin only)
-bot.onText(/\/user/, async (msg) => {
-    console.log(`User command received from chat ${msg.chat.id}`);
+handleCommand(/\/user/, async (msg) => {
     if (msg.from.id.toString() === '6419892672') {
         await commands.showUserList(bot, msg.chat.id);
     } else {
-        await bot.sendMessage(msg.chat.id, 
+        addToMessageQueue(msg.chat.id,
             "━━━━━━━━━━━━━━━━━━━━━━━━\n" +
             "⛔ 𝗔𝗖𝗖𝗘𝗦 𝗥𝗘𝗙𝗨𝗦É\n\n" +
             "Cette commande est réservée aux administrateurs.\n" +
@@ -181,9 +261,14 @@ bot.onText(/\/user/, async (msg) => {
     }
 });
 
-// Handle text messages for tests
+// Handle text messages for tests with cooldown
 bot.on('message', async (msg) => {
     if (msg.text && !msg.text.startsWith('/')) {
+        if (isOnCooldown(msg.chat.id, 'text')) {
+            addToMessageQueue(msg.chat.id, "Veuillez attendre un moment avant d'envoyer un nouveau message.");
+            return;
+        }
+
         console.log(`Text message received from chat ${msg.chat.id}: ${msg.text.substring(0, 20)}...`);
         await commands.handleTestResponse(bot, msg);
     }
