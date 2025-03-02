@@ -24,13 +24,18 @@ async function generateText() {
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); 
 
         const prompts = [
-            "Génère une citation inspirante dans un contexte de ton choix. Le contexte doit être évocateur et la citation doit être profonde et mémorable.",
-            "Crée un proverbe philosophique original dans un contexte que tu choisis librement. Le proverbe doit être sage et réfléchi.",
-            "Propose un mot ou groupe de mots évocateur dans un contexte que tu imagines. L'expression doit être poétique et significative.",
-            "Compose un adage dans un contexte de ton choix. L'adage doit être porteur de sagesse et d'enseignement.",
-            "Écris une phrase descriptive dans un environnement que tu sélectionnes. La description doit être vivante et immersive.",
-            "Formule une expression poétique dans un cadre que tu détermines. L'expression doit être belle et touchante.",
-            "Invente un dicton dans une situation de ton choix. Le dicton doit être mémorable et pertinent."
+            "Génère une citation inspirante ou un adage de ton choix.",
+            "Propose un mot ou un groupe de mots évocateur et poétique.",
+            "Donne une parole marquante de rap français (style Damso, Ninho, Booba ou Youssoupha).",
+            "Crée une expression originale qui pourrait devenir un dicton.",
+            "Cite une phrase d'un philosophe ou d'un auteur célèbre.",
+            "Invente un mot composé ou une expression poétique.",
+            "Donne un adjectif ou un groupe d'adjectifs évocateurs.",
+            "Propose une phrase percutante qui pourrait venir d'une chanson de rap.",
+            "Crée un néologisme (nouveau mot) avec sa signification.",
+            "Extrait une citation existante de la littérature ou de la philosophie.",
+            "Compose une phrase courte mais impactante.",
+            "Génère un mot ou une expression qui évoque une émotion forte."
         ];
 
         const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)];
