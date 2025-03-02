@@ -179,15 +179,17 @@ async function showStats(bot, chatId, username) {
 
     if (stats.precision) {
         statsMessage += "🎯 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗣𝗥É𝗖𝗜𝗦𝗜𝗢𝗡\n";
+        statsMessage += `🎯 Précision moyenne: ${stats.precision.accuracy}%\n`;
+        statsMessage += `🎯 Meilleure précision: ${stats.precision.bestAccuracy}%\n`;
         statsMessage += `⚡ Vitesse: ${stats.precision.wpm} WPM\n`;
-        statsMessage += `📝 Précision: ${stats.precision.accuracy}%\n`;
         statsMessage += `🏆 Rang: ${stats.precision.rank}\n\n`;
     }
 
     if (stats.speed) {
         statsMessage += "⚡ 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗩𝗜𝗧𝗘𝗦𝗦𝗘\n";
-        statsMessage += `⚡ Vitesse: ${stats.speed.wpm} WPM\n`;
-        statsMessage += `📝 Précision: ${stats.speed.accuracy}%\n`;
+        statsMessage += `⚡ Vitesse moyenne: ${stats.speed.wpm} WPM\n`;
+        statsMessage += `⚡ Meilleure vitesse: ${stats.speed.bestWpm} WPM\n`;
+        statsMessage += `🎯 Précision: ${stats.speed.accuracy}%\n`;
         statsMessage += `🏆 Rang: ${stats.speed.rank}\n\n`;
     }
 
@@ -519,48 +521,84 @@ ${success ? '✅ Succès!' : '❌ Essayez encore!'}
 
 async function finishTest(bot, chatId) {
     const test = db.endTest(chatId);
-    if (!test) return;
+    if (!test) {
+        console.log('No active test found for chat', chatId);
+        return;
+    }
 
-    await bot.sendMessage(chatId, "𝙰𝙽𝙰𝙻𝚈𝚂𝙴 𝙴𝙽 𝙲𝙾𝚄𝚁𝚂...");
+    console.log(`Finishing test for user ${test.username} (${chatId})`);
+    const analysisMsg = await bot.sendMessage(chatId, "𝙰𝙽𝙰𝙻𝚈𝚂𝙴 𝙴𝙽 𝙲𝙾𝚄𝚁𝚂...");
 
-    setTimeout(async () => {
+    try {
+        // Vérifier que nous avons des résultats
+        if (!test.results || test.results.length === 0) {
+            throw new Error('No test results found');
+        }
+
         const avgWpm = test.results.reduce((sum, r) => sum + r.wpm, 0) / test.results.length;
         const avgAccuracy = test.results.reduce((sum, r) => sum + r.accuracy, 0) / test.results.length;
         const mode = test.type.includes('speed') ? 'speed' : 'precision';
         const rank = typingTest.getRankFromStats(avgWpm, avgAccuracy, mode);
 
+        console.log('Calculated stats:', { avgWpm, avgAccuracy, mode, rank });
+
+        // Calculer les meilleures performances
+        const bestWpm = Math.max(...test.results.map(r => r.wpm));
+        const bestAccuracy = Math.max(...test.results.map(r => r.accuracy));
+
         const stats = {
             wpm: Math.round(avgWpm),
             accuracy: Math.round(avgAccuracy),
-            successCount: test.successCount,
+            bestWpm: Math.round(bestWpm),
+            bestAccuracy: Math.round(bestAccuracy),
+            successCount: test.successCount || 0,
             totalTests: test.words.length,
             rank
         };
 
-        // Utiliser le username stocké dans l'objet test
+        // Sauvegarder les stats immédiatement
         db.saveStats(chatId, test.username, test.type, stats);
 
-        const statsMessage = `
-        🏯 𝐒𝐇𝐈𝐑𝐎 𝐎𝐍𝐈 - 𝔾𝕌ℕ ℙ𝔸ℝ𝕂
-        Test ${test.type === 'speed' ? 'de vitesse' : 'de précision'} terminé!
+        let statsMessage = `🏯 𝐒𝐇𝐈𝐑𝐎 𝐎𝐍𝐈 - 𝔾𝕌ℕ ℙ𝔸ℝ𝕂
+Test ${test.type.includes('speed') ? 'de vitesse' : 'de précision'} terminé!
 
-        ━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━
 
-        📊 𝗥É𝗦𝗨𝗟𝗧𝗔𝗧𝗦 𝗙𝗜𝗡𝗔𝗨𝗫
+📊 𝗥É𝗦𝗨𝗟𝗧𝗔𝗧𝗦 𝗙𝗜𝗡𝗔𝗨𝗫\n\n`;
 
-        ⚡ Vitesse moyenne : ${stats.wpm} WPM
-        🎯 Précision : ${stats.accuracy}%
-        ✨ Réussites : ${stats.successCount}/${stats.totalTests}
+        if (test.type.includes('speed')) {
+            statsMessage += `⚡ Vitesse moyenne : ${stats.wpm} WPM
+⚡ Meilleure vitesse : ${stats.bestWpm} WPM
+🎯 Précision : ${stats.accuracy}%`;
+        } else {
+            statsMessage += `🎯 Précision moyenne : ${stats.accuracy}%
+🎯 Meilleure précision : ${stats.bestAccuracy}%
+⚡ Vitesse : ${stats.wpm} WPM`;
+        }
 
-        🏆 Rang obtenu : ${rank}
+        statsMessage += `\n✨ Réussites : ${stats.successCount}/${stats.totalTests}
 
-        ━━━━━━━━━━━━━━━━━━━━━━━━
+🏆 Rang obtenu : ${stats.rank}
 
-        Utilisez /training pour continuer l'entraînement
-        `;
+━━━━━━━━━━━━━━━━━━━━━━━━
 
+Utilisez /training pour continuer l'entraînement`;
+
+        // Supprimer le message d'analyse
+        try {
+            await bot.deleteMessage(chatId, analysisMsg.message_id);
+        } catch (error) {
+            console.error('Error deleting analysis message:', error);
+        }
+
+        // Envoyer les stats finales
         await bot.sendMessage(chatId, statsMessage);
-    }, 3000);
+        console.log(`Final stats sent successfully to ${test.username}`);
+
+    } catch (error) {
+        console.error('Error in finishTest:', error);
+        await bot.sendMessage(chatId, "Une erreur est survenue lors de l'analyse des résultats.");
+    }
 }
 
 module.exports = {

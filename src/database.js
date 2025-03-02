@@ -38,6 +38,7 @@ const db = {
             results: [],
             errors: 0,
             successCount: 0,
+            totalTests: words.length,
             username // Stocker le username dans le test actif
         });
     },
@@ -49,15 +50,23 @@ const db = {
     updateTestResult(userId, result) {
         const test = activeTests.get(userId);
         if (test) {
+            console.log(`Adding result for ${test.username}:`, result);
             test.results.push(result);
-            if (result.success) test.successCount++;
-            if (result.errors) test.errors += result.errors;
+            if (result.success) {
+                test.successCount++;
+                console.log(`Success count increased to ${test.successCount}`);
+            }
+            if (result.errors) {
+                test.errors += result.errors;
+                console.log(`Errors count increased to ${test.errors}`);
+            }
         }
     },
 
     endTest(userId) {
         const test = activeTests.get(userId);
         activeTests.delete(userId);
+        console.log(`Ending test for user ${test?.username} (${userId})`, test);
         return test;
     },
 
@@ -73,7 +82,14 @@ const db = {
 
         // Remove '_training' suffix if present for stats storage
         const cleanTestType = testType.replace('_training', '');
-        userData.stats[cleanTestType] = stats;
+        userData.stats = userData.stats || {};
+        userData.stats[cleanTestType] = {
+            wpm: stats.wpm,
+            accuracy: stats.accuracy,
+            bestWpm: stats.bestWpm,
+            bestAccuracy: stats.bestAccuracy,
+            rank: stats.rank
+        };
 
         // Save to database
         users.set(userId, userData);

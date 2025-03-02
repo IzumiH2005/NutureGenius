@@ -23,19 +23,35 @@ async function generateText() {
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); 
 
-        const prompts = [
-            "Générer une citation aléatoire",
-            "Donner un proverbe au hasard",
-            "Écrire un mot ou groupe de mots",
-            "Donner une expression courte",
-            "Générer une phrase simple"
+        const contexts = [
+            "dans un café parisien",
+            "pendant une randonnée en montagne",
+            "lors d'une soirée d'été",
+            "dans un ancien temple japonais",
+            "sur une plage déserte",
+            "dans une bibliothèque silencieuse",
+            "pendant un voyage en train",
+            "dans un marché animé",
+            "sous la pluie d'automne",
+            "dans un jardin zen"
         ];
 
-        const prompt = prompts[Math.floor(Math.random() * prompts.length)];
-        console.log(`Generating text with prompt: ${prompt}`);
+        const prompts = [
+            "Générer une citation inspirante {context}",
+            "Donner un proverbe philosophique {context}",
+            "Écrire un mot ou groupe de mots évocateur {context}",
+            "Donner une expression poétique {context}",
+            "Générer une phrase descriptive {context}"
+        ];
+
+        const selectedContext = contexts[Math.floor(Math.random() * contexts.length)];
+        const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)]
+            .replace('{context}', selectedContext);
+
+        console.log(`Generating text with prompt: ${selectedPrompt}`);
 
         lastCallTime = Date.now();
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent(selectedPrompt);
         const response = await result.response;
         const text = response.text();
 
