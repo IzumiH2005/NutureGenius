@@ -1,6 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const commands = require('./commands');
 const db = require('./database');
+require('./health'); // Import the health check server
 
 // Add error handling for uncaught exceptions
 process.on('uncaughtException', (error) => {
@@ -23,7 +24,7 @@ let pollingErrors = 0;
 const MAX_POLLING_ERRORS = 5;
 let isPolling = false;
 
-// Message cooldown system
+// Message cooldown system with per-user tracking
 const messageCooldowns = new Map();
 const COOLDOWN_TIME = 1000; // 1 second cooldown
 
@@ -40,40 +41,93 @@ function isOnCooldown(chatId, messageType) {
     return false;
 }
 
-// Message queue system
+// Message queue system with per-user tracking
 const messageQueue = new Map();
 const QUEUE_PROCESS_INTERVAL = 500; // Process queue every 500ms
+const MAX_QUEUE_SIZE = 10; // Maximum messages in queue per user
 
 function addToMessageQueue(chatId, message, options = {}) {
     if (!messageQueue.has(chatId)) {
         messageQueue.set(chatId, []);
+        console.log(`[Queue Manager] Created new message queue for user ${chatId}`);
     }
-    messageQueue.get(chatId).push({ message, options });
+
+    const queue = messageQueue.get(chatId);
+    if (queue.length >= MAX_QUEUE_SIZE) {
+        console.log(`[Queue Manager] Queue full for user ${chatId}, removing oldest message`);
+        queue.shift();
+    }
+
+    // Vérifier si un message similaire existe déjà dans la queue
+    const isDuplicate = queue.some(item => 
+        item.message === message && 
+        JSON.stringify(item.options) === JSON.stringify(options)
+    );
+
+    if (!isDuplicate) {
+        queue.push({ 
+            message, 
+            options,
+            timestamp: Date.now(),
+            id: Math.random().toString(36).substring(7) // Unique ID for message
+        });
+        console.log(`[Queue Manager] Added message to queue for user ${chatId}. Queue size: ${queue.length}`);
+    } else {
+        console.log(`[Queue Manager] Duplicate message detected and skipped for user ${chatId}`);
+    }
 }
 
 async function processMessageQueue(chatId) {
     const queue = messageQueue.get(chatId);
     if (!queue || queue.length === 0) return;
 
-    const { message, options } = queue.shift();
+    const { message, options, timestamp, id } = queue[0];
+    const now = Date.now();
+    const messageAge = now - timestamp;
+
+    console.log(`[Queue Manager] Processing message ${id} for user ${chatId}. Message age: ${messageAge}ms`);
+
+    if (messageAge < 100) {
+        console.log(`[Queue Manager] Message too new (${messageAge}ms), waiting...`);
+        return;
+    }
+
     try {
-        await bot.sendMessage(chatId, message, options);
+        if (acquireLock(chatId)) {
+            await bot.sendMessage(chatId, message, options);
+            queue.shift();
+            console.log(`[Queue Manager] Successfully sent message ${id} to user ${chatId}. Remaining in queue: ${queue.length}`);
+            releaseLock(chatId);
+        }
     } catch (error) {
-        console.error('Error sending queued message:', error);
+        console.error(`[Queue Manager] Error sending message ${id} to user ${chatId}:`, error);
+        releaseLock(chatId);
+        if (messageAge > 3000) {
+            queue.shift();
+            console.log(`[Queue Manager] Removed failed message ${id} for user ${chatId} after ${messageAge}ms`);
+        }
     }
 
     if (queue.length === 0) {
         messageQueue.delete(chatId);
+        console.log(`[Queue Manager] Removed empty queue for user ${chatId}`);
     }
 }
 
-// Process message queues periodically
-setInterval(() => {
-    for (const chatId of messageQueue.keys()) {
-        processMessageQueue(chatId);
-    }
-}, QUEUE_PROCESS_INTERVAL);
+const messageLocks = new Map();
 
+// Gestion des verrous pour éviter les doubles messages
+function acquireLock(chatId) {
+    if (messageLocks.get(chatId)) {
+        return false;
+    }
+    messageLocks.set(chatId, true);
+    return true;
+}
+
+function releaseLock(chatId) {
+    messageLocks.delete(chatId);
+}
 
 const bot = new TelegramBot(token, {
     polling: false // Démarrage manuel du polling
@@ -290,9 +344,12 @@ handleCommand(/\/end/, async (msg) => {
     );
 });
 
-// Handle text messages for tests with cooldown
+// Handle text messages for tests with enhanced session management
 bot.on('message', async (msg) => {
     if (msg.text && !msg.text.startsWith('/')) {
+        const session = db.getUserSession(msg.chat.id);
+        if (!session) return;
+
         // Ne traiter que les messages pendant un test actif
         const test = db.getActiveTest(msg.chat.id);
         if (!test) return;
@@ -303,8 +360,38 @@ bot.on('message', async (msg) => {
         }
 
         console.log(`Text message received from chat ${msg.chat.id}: ${msg.text.substring(0, 20)}...`);
-        await commands.handleTestResponse(bot, msg);
+        await handleTestResponse(bot, msg);
     }
 });
+
+async function handleTestResponse(bot, msg) {
+    const test = db.getActiveTest(msg.chat.id);
+    if (!test) {
+        console.log(`Ignoring message - no active test for chat ${msg.chat.id}`);
+        return;
+    }
+
+    // Vérifier si un message est en cours de traitement
+    if (!acquireLock(msg.chat.id)) {
+        console.log(`Message skipped for chat ${msg.chat.id} - lock active`);
+        return;
+    }
+
+    try {
+        await commands.handleTestResponse(bot, msg);
+    } finally {
+        // Toujours libérer le verrou à la fin
+        releaseLock(msg.chat.id);
+    }
+}
+
+// Process message queues periodically with enhanced error handling
+setInterval(() => {
+    for (const chatId of messageQueue.keys()) {
+        processMessageQueue(chatId).catch(error => {
+            console.error(`Error processing message queue for chat ${chatId}:`, error);
+        });
+    }
+}, QUEUE_PROCESS_INTERVAL);
 
 module.exports = bot;

@@ -465,6 +465,7 @@ async function generateSpeedTestWords() {
 }
 
 
+
 async function handleTestResponse(bot, msg) {
     const test = db.getActiveTest(msg.chat.id);
     if (!test) {
@@ -481,7 +482,7 @@ async function handleTestResponse(bot, msg) {
     try {
         console.log(`Processing message for chat ${msg.chat.id}: "${msg.text}"`);
         // Liste des variations acceptables de "next"
-        const nextCommands = ['next', 'nex', 'newt', 'nexr', 'nxt'];
+        const nextCommands = ['next', 'nex', 'newt', 'nexr', 'nxt', 'n\'est', 'n\'est\'', '\'est'];
         if (nextCommands.includes(msg.text.toLowerCase())) {
             if (test.currentIndex >= test.words.length) {
                 await finishTest(bot, msg.chat.id);

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHIRO ONI - GUN PARK</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --primary-color: #ff0044;
+            --secondary-color: #00eeff;
+            --bg-color: #0a0a12;
+            --text-color: #ffffff;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Rajdhani', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .noise {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            opacity: 0.05;
+            z-index: 1;
+            pointer-events: none;
+        }
+        
+        .grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+                             linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 2;
+        }
+        
+        .logo {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            font-size: 2rem;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            margin-bottom: 20px;
+            color: var(--secondary-color);
+            text-shadow: 0 0 10px rgba(0, 238, 255, 0.5);
+        }
+        
+        .status-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            background-color: rgba(10, 10, 18, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 40px;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 0 30px rgba(0, 238, 255, 0.1);
+            overflow: hidden;
+        }
+        
+        .status-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            animation: scanline 2s linear infinite;
+        }
+        
+        .status-heading {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 30px;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0 0 5px rgba(255, 0, 68, 0.3);
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 40px 0;
+        }
+        
+        .pulse {
+            width: 16px;
+            height: 16px;
+            background-color: #00ff44;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #00ff44, 0 0 20px #00ff44;
+            margin-right: 15px;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .status-text {
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .description {
+            text-align: center;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 40px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .highlights {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 40px;
+        }
+        
+        .highlight {
+            text-align: center;
+            width: 30%;
+        }
+        
+        .highlight-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            color: var(--secondary-color);
+        }
+        
+        .highlight-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: var(--primary-color);
+        }
+        
+        .highlight-text {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .creator {
+            color: var(--secondary-color);
+            font-weight: 600;
+        }
+        
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.3);
+                opacity: 0.7;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes scanline {
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(100%);
+            }
+        }
+        
+        .glitch {
+            position: relative;
+        }
+        
+        .glitch::before, .glitch::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .glitch::before {
+            color: var(--primary-color);
+            z-index: -1;
+            animation: glitch-effect 3s infinite;
+        }
+        
+        .glitch::after {
+            color: var(--secondary-color);
+            z-index: -2;
+            animation: glitch-effect 2s infinite reverse;
+        }
+        
+        @keyframes glitch-effect {
+            0% {
+                transform: none;
+                opacity: 1;
+            }
+            7% {
+                transform: translate(2px, 3px);
+                opacity: 0.75;
+            }
+            10% {
+                transform: none;
+                opacity: 1;
+            }
+            27% {
+                transform: none;
+                opacity: 1;
+            }
+            30% {
+                transform: translate(-5px, 0);
+                opacity: 0.75;
+            }
+            35% {
+                transform: none;
+                opacity: 1;
+            }
+            52% {
+                transform: none;
+                opacity: 1;
+            }
+            55% {
+                transform: translate(5px, -3px);
+                opacity: 0.75;
+            }
+            60% {
+                transform: none;
+                opacity: 1;
+            }
+            100% {
+                transform: none;
+                opacity: 1;
+            }
+        }
+        
+        /* Responsive styles */
+        @media (max-width: 768px) {
+            .status-heading {
+                font-size: 1.8rem;
+            }
+            
+            .status-text {
+                font-size: 1.2rem;
+            }
+            
+            .highlights {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .highlight {
+                width: 80%;
+                margin-bottom: 30px;
+            }
+            
+            .status-container {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="noise"></div>
+    <div class="grid"></div>
+    
+    <div class="container">
+        <div class="logo">SHIRO ONI</div>
+        
+        <div class="status-container">
+            <h1 class="status-heading glitch" data-text="GUN PARK EST ACTUELLEMENT OPÉRATIONNEL">GUN PARK EST ACTUELLEMENT OPÉRATIONNEL</h1>
+            
+            <div class="status-indicator">
+                <div class="pulse"></div>
+                <div class="status-text">Système en ligne</div>
+            </div>
+            
+            <p class="description">
+                Bot d'entraînement de vitesse et de précision conçu pour améliorer vos réflexes et votre performance. 
+                Une technologie de pointe développée pour les tireurs de tous niveaux, créée exclusivement par <strong>Izumi Heathcliff</strong>.
+            </p>
+            
+            <div class="highlights">
+                <div class="highlight">
+                    <div class="highlight-icon">⚡</div>
+                    <h3 class="highlight-title">VITESSE</h3>
+                    <p class="highlight-text">Entraînement des réflexes et temps de réaction optimisés</p>
+                </div>
+                
+                <div class="highlight">
+                    <div class="highlight-icon">🎯</div>
+                    <h3 class="highlight-title">PRÉCISION</h3>
+                    <p class="highlight-text">Amélioration de la coordination œil-main et de la précision</p>
+                </div>
+                
+                <div class="highlight">
+                    <div class="highlight-icon">📊</div>
+                    <h3 class="highlight-title">ANALYSE</h3>
+                    <p class="highlight-text">Suivi des performances et statistiques détaillées</p>
+                </div>
+            </div>
+            
+            <div class="footer">
+                © 2025 | <strong>Créateur du bot :</strong> <span class="creator">Izumi Heathcliff</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Animation dynamique pour certains éléments
+        document.addEventListener('DOMContentLoaded', function() {
+            // Effet de scintillement aléatoire pour les textes futuristes
+            setInterval(() => {
+                const heading = document.querySelector('.status-heading');
+                heading.style.textShadow = Math.random() > 0.95 ? '0 0 5px #ff0044, 0 0 10px #ff0044' : 'none';
+            }, 50);
+        });
+    </script>
+</body>
+</html>
