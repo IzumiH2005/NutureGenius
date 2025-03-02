@@ -8,13 +8,15 @@ const customTextStats = new Map(); // Stockage des stats par texte
 // Session management
 function createUserSession(userId) {
     if (!userSessions.has(userId)) {
-        userSessions.set(userId, {
+        const session = {
             lastActivity: Date.now(),
             isLocked: false,
-            currentTest: null
-        });
-        console.log(`[Session Manager] New session created for user ${userId}`);
-        console.log(`[Session Manager] Active sessions: ${userSessions.size}`);
+            currentTest: null,
+            customTextState: null,
+            pendingCustomText: null
+        };
+        userSessions.set(userId, session);
+        console.log(`[Session Manager] Created new session for user ${userId}:`, session);
     }
     return userSessions.get(userId);
 }
@@ -23,63 +25,63 @@ function updateSessionActivity(userId) {
     const session = userSessions.get(userId);
     if (session) {
         session.lastActivity = Date.now();
-        console.log(`[Session Manager] Activity updated for user ${userId}`);
+        console.log(`[Session Manager] Updated activity for user ${userId}, session:`, session);
+    } else {
+        console.log(`[Session Manager] No session found for user ${userId}, creating new one`);
+        return createUserSession(userId);
     }
+    return session;
 }
 
-function cleanupInactiveSessions() {
-    const INACTIVE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-    const now = Date.now();
-    let cleanedCount = 0;
-
-    console.log(`[Session Manager] Starting cleanup of inactive sessions...`);
-    console.log(`[Session Manager] Current active sessions: ${userSessions.size}`);
-
-    for (const [userId, session] of userSessions.entries()) {
-        if (now - session.lastActivity > INACTIVE_TIMEOUT) {
-            console.log(`[Session Manager] Cleaning up inactive session for user ${userId} (inactive for ${Math.floor((now - session.lastActivity) / 1000)}s)`);
-            if (session.currentTest?.countdownInterval) {
-                clearInterval(session.currentTest.countdownInterval);
-                console.log(`[Session Manager] Cleared countdown interval for user ${userId}`);
-            }
-            userSessions.delete(userId);
-            activeTests.delete(userId);
-            cleanedCount++;
-        }
-    }
-
-    console.log(`[Session Manager] Cleanup completed. Removed ${cleanedCount} inactive sessions`);
-    console.log(`[Session Manager] Remaining active sessions: ${userSessions.size}`);
-}
-
-// Run cleanup every 5 minutes
-setInterval(cleanupInactiveSessions, 5 * 60 * 1000);
-
-// Fonction pour nettoyer uniquement les tests terminés
-function cleanupActiveTests() {
-    const activeTestsArray = Array.from(activeTests.entries());
-    activeTestsArray.forEach(([userId, test]) => {
-        // Ne nettoie que les tests qui sont terminés
-        if (test.currentIndex >= test.words.length) {
-            if (test.countdownInterval) {
-                clearInterval(test.countdownInterval);
-                test.countdownInterval = null;
-            }
-
-            const session = userSessions.get(userId);
-            if (session) {
-                session.currentTest = null;
-            }
-
-            activeTests.delete(userId);
-            console.log(`Cleaned up completed test for user ${userId}`);
-        }
-    });
-    console.log('Cleanup of completed tests finished');
-}
-
+// Database operations
 const db = {
-    // User management
+    getUserSession(userId) {
+        let session = userSessions.get(userId);
+        if (!session) {
+            console.log(`[Session Manager] Creating new session for user ${userId}`);
+            session = createUserSession(userId);
+        }
+        updateSessionActivity(userId);
+        return session;
+    },
+
+    // Custom text management
+    saveCustomText(userId, textName, content) {
+        console.log(`[Custom Text] Attempting to save text for user ${userId}`);
+        const textId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        customTexts.set(textId, {
+            name: textName,
+            content,
+            createdBy: userId,
+            createdAt: Date.now()
+        });
+        console.log(`[Custom Text] Successfully saved text: ${textName} by user ${userId} with ID ${textId}`);
+        return textId;
+    },
+
+    getCustomText(textId) {
+        return customTexts.get(textId);
+    },
+
+    getAllCustomTexts() {
+        return Array.from(customTexts.entries()).map(([id, text]) => ({
+            id,
+            name: text.name,
+            createdBy: text.createdBy,
+            createdAt: text.createdAt
+        }));
+    },
+
+    getUserCustomTexts(userId) {
+        return Array.from(customTexts.entries())
+            .filter(([, text]) => text.createdBy === userId)
+            .map(([id, text]) => ({
+                id,
+                name: text.name,
+                createdAt: text.createdAt
+            }));
+    },
+
     saveUser(userId, data) {
         createUserSession(userId);
         updateSessionActivity(userId);
@@ -114,7 +116,6 @@ const db = {
         }));
     },
 
-    // Active test management with session support
     startTest(userId, testType, words, username) {
         const session = createUserSession(userId);
         updateSessionActivity(userId);
@@ -203,7 +204,6 @@ const db = {
         return test;
     },
 
-    // Stats management
     saveStats(userId, username, testType, stats) {
         updateSessionActivity(userId);
         console.log(`Saving stats for user ${username} (${userId})`);
@@ -238,48 +238,6 @@ const db = {
         return user ? user.stats : null;
     },
 
-    // Session management
-    getUserSession(userId) {
-        return userSessions.get(userId);
-    },
-
-    // Custom text management
-    saveCustomText(userId, textName, content) {
-        const textId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        customTexts.set(textId, {
-            name: textName,
-            content,
-            createdBy: userId,
-            createdAt: Date.now()
-        });
-        console.log(`Custom text saved: ${textName} by user ${userId}`);
-        return textId;
-    },
-
-    getCustomText(textId) {
-        return customTexts.get(textId);
-    },
-
-    getAllCustomTexts() {
-        return Array.from(customTexts.entries()).map(([id, text]) => ({
-            id,
-            name: text.name,
-            createdBy: text.createdBy,
-            createdAt: text.createdAt
-        }));
-    },
-
-    getUserCustomTexts(userId) {
-        return Array.from(customTexts.entries())
-            .filter(([, text]) => text.createdBy === userId)
-            .map(([id, text]) => ({
-                id,
-                name: text.name,
-                createdAt: text.createdAt
-            }));
-    },
-
-    // Custom text stats management
     saveCustomTextStats(textId, userId, stats) {
         if (!customTextStats.has(textId)) {
             customTextStats.set(textId, new Map());
@@ -302,19 +260,17 @@ const db = {
                 username: user?.username || `User_${userId}`,
                 ...stats
             };
-        }).sort((a, b) => b.wpm - a.wpm); // Tri par WPM décroissant
+        }).sort((a, b) => b.wpm - a.wpm);
     },
 
     getGlobalLeaderboard() {
         const userStats = new Map();
 
-        // Collecter toutes les stats de tous les utilisateurs
         users.forEach((userData, userId) => {
             if (userData.stats) {
                 let bestWpm = 0;
                 let bestAccuracy = 0;
 
-                // Vérifier les stats de vitesse et de précision
                 if (userData.stats.speed) {
                     bestWpm = Math.max(bestWpm, userData.stats.speed.bestWpm || 0);
                     bestAccuracy = Math.max(bestAccuracy, userData.stats.speed.bestAccuracy || 0);
@@ -324,7 +280,6 @@ const db = {
                     bestAccuracy = Math.max(bestAccuracy, userData.stats.precision.bestAccuracy || 0);
                 }
 
-                // Ajouter les meilleures stats de l'utilisateur
                 userStats.set(userId, {
                     username: userData.username || `User_${userId}`,
                     bestWpm,
@@ -333,16 +288,35 @@ const db = {
             }
         });
 
-        // Convertir en tableau et trier par WPM
         return Array.from(userStats.values())
             .sort((a, b) => b.bestWpm - a.bestWpm);
     },
 
-    // Cleanup function now handles both completed tests and inactive sessions
     cleanup: () => {
         cleanupActiveTests();
-        cleanupInactiveSessions();
     }
 };
+
+// Function to cleanup completed tests only
+function cleanupActiveTests() {
+    const activeTestsArray = Array.from(activeTests.entries());
+    activeTestsArray.forEach(([userId, test]) => {
+        if (test.currentIndex >= test.words.length) {
+            if (test.countdownInterval) {
+                clearInterval(test.countdownInterval);
+                test.countdownInterval = null;
+            }
+
+            const session = userSessions.get(userId);
+            if (session) {
+                session.currentTest = null;
+            }
+
+            activeTests.delete(userId);
+            console.log(`Cleaned up completed test for user ${userId}`);
+        }
+    });
+    console.log('Cleanup of completed tests finished');
+}
 
 module.exports = db;

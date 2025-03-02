@@ -218,54 +218,65 @@ bot.onText(/\/start/, async (msg) => {
     }, 500);
 });
 
-// Handle callback queries
+// Handle callback queries with improved logging
 bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
+    console.log(`[Callback] Received callback query: ${query.data} from chat ${chatId}`);
 
     // Check cooldown for callback queries
     if (isOnCooldown(chatId, 'callback')) {
         await bot.answerCallbackQuery(query.id);
+        console.log(`[Callback] Skipped due to cooldown: ${query.data}`);
         return;
     }
 
-    console.log(`Callback query received: ${query.data} from chat ${chatId}`);
-
     try {
-        if (query.data.startsWith('user_stats_')) {
-            const username = query.data.split('_')[2];
-            const stats = db.getStatsByUsername(username);
-            if (stats) {
-                await commands.showStats(bot, chatId, username);
-            } else {
-                await bot.sendMessage(chatId, "Utilisateur non trouvé.");
-            }
-            await bot.answerCallbackQuery(query.id);
-            return;
-        }
-
-        if (query.data.startsWith('precision_training_') || query.data.startsWith('speed_training_')) {
-            const [type, , rank] = query.data.split('_');
-            await commands.startTrainingWithRank(bot, chatId, type, rank);
-            await bot.answerCallbackQuery(query.id);
-            return;
-        }
-        // Handle custom text related callbacks
+        // Custom text related callbacks
         if (query.data.startsWith('start_custom_')) {
+            console.log(`[Callback] Starting custom test with ID: ${query.data.split('_')[2]}`);
             const textId = query.data.split('_')[2];
             await commands.startCustomTest(bot, chatId, textId);
         }
         else if (query.data.startsWith('ranking_custom_')) {
+            console.log(`[Callback] Showing ranking for text ID: ${query.data.split('_')[2]}`);
             const textId = query.data.split('_')[2];
             await commands.showTextRanking(bot, chatId, textId);
         }
         else if (query.data.startsWith('custom_difficulty_')) {
+            console.log(`[Callback] Setting difficulty for text`);
             const [, , textId, difficulty] = query.data.split('_');
             await commands.startCustomTestWithDifficulty(bot, chatId, textId, difficulty);
         }
 
+        // Main menu callbacks
         switch (query.data) {
             case 'show_menu':
+                console.log(`[Callback] Showing main menu for user ${chatId}`);
                 await commands.showMenu(bot, chatId);
+                break;
+            case 'show_custom_menu':
+                console.log(`[Callback] Showing custom menu for user ${chatId}`);
+                await commands.showCustomMenu(bot, chatId);
+                break;
+            case 'custom_new':
+                console.log(`[Callback] Starting new custom text for user ${chatId}`);
+                await commands.handleNewCustomText(bot, chatId);
+                break;
+            case 'custom_preset':
+                console.log(`[Callback] Showing preset texts for user ${chatId}`);
+                await commands.showPresetTexts(bot, chatId);
+                break;
+            case 'custom_personal':
+                console.log(`[Callback] Showing personal texts for user ${chatId}`);
+                await commands.showPersonalTexts(bot, chatId);
+                break;
+            case 'custom_rankings':
+                console.log(`[Callback] Showing custom rankings for user ${chatId}`);
+                await commands.showCustomTextRankings(bot, chatId);
+                break;
+            case 'show_leaderboard':
+                console.log(`[Callback] Showing leaderboard for user ${chatId}`);
+                await commands.showLeaderboard(bot, chatId);
                 break;
             case 'mode_precision':
                 await commands.showPrecisionMenu(bot, chatId);
@@ -285,32 +296,68 @@ bot.on('callback_query', async (query) => {
             case 'speed_training':
                 await commands.startSpeedTraining(bot, chatId);
                 break;
-            case 'show_custom_menu':
-                await commands.showCustomMenu(bot, chatId);
-                break;
-            case 'custom_new':
-                await commands.handleNewCustomText(bot, chatId);
-                break;
-            case 'custom_preset':
-                await commands.showPresetTexts(bot, chatId);
-                break;
-            case 'custom_personal':
-                await commands.showPersonalTexts(bot, chatId);
-                break;
-            case 'custom_rankings':
-                await commands.showCustomTextRankings(bot, chatId);
-                break;
-            case 'show_leaderboard':
-                await commands.showLeaderboard(bot, chatId);
-                break;
         }
 
         await bot.answerCallbackQuery(query.id);
     } catch (error) {
-        console.error('Error handling callback query:', error);
+        console.error('[Callback] Error handling callback query:', error);
         await bot.answerCallbackQuery(query.id, { text: "Une erreur s'est produite" });
     }
 });
+
+// Message handler with improved logging
+bot.on('message', async (msg) => {
+    if (msg.text && !msg.text.startsWith('/')) {
+        const session = db.getUserSession(msg.chat.id);
+        if (!session) {
+            console.log(`[Message] No session found for user ${msg.chat.id}`);
+            return;
+        }
+
+        console.log(`[Message] Processing message from ${msg.chat.id}:`, {
+            textLength: msg.text.length,
+            sessionState: session.customTextState
+        });
+
+        // Handle custom text input first
+        if (await commands.handleCustomTextInput(bot, msg)) {
+            console.log(`[Message] Handled as custom text input for user ${msg.chat.id}`);
+            return;
+        }
+
+        const test = db.getActiveTest(msg.chat.id);
+        if (!test) return;
+
+        if (isOnCooldown(msg.chat.id, 'text')) {
+            addToMessageQueue(msg.chat.id, "Veuillez attendre un moment avant d'envoyer un nouveau message.");
+            return;
+        }
+
+        console.log(`Text message received from chat ${msg.chat.id}: ${msg.text.substring(0, 20)}...`);
+        await handleTestResponse(bot, msg);
+    }
+});
+
+async function handleTestResponse(bot, msg) {
+    const test = db.getActiveTest(msg.chat.id);
+    if (!test) {
+        console.log(`Ignoring message - no active test for chat ${msg.chat.id}`);
+        return;
+    }
+
+    // Vérifier si un message est en cours de traitement
+    if (!acquireLock(msg.chat.id)) {
+        console.log(`Message skipped for chat ${msg.chat.id} - lock active`);
+        return;
+    }
+
+    try {
+        await commands.handleTestResponse(bot, msg);
+    } finally {
+        // Toujours libérer le verrou à la fin
+        releaseLock(msg.chat.id);
+    }
+}
 
 // Handle commands with cooldown
 const handleCommand = async (command, handler) => {
@@ -385,52 +432,6 @@ handleCommand(/\/custom/, async (msg) => {
     await commands.showCustomMenu(bot, msg.chat.id);
 });
 
-
-// Ajouter le gestionnaire de messages pour les textes personnalisés
-bot.on('message', async (msg) => {
-    if (msg.text && !msg.text.startsWith('/')) {
-        const session = db.getUserSession(msg.chat.id);
-        if (!session) return;
-
-        // Handle custom text input first
-        if (await commands.handleCustomTextInput(bot, msg)) {
-            return;
-        }
-
-        // Continue with existing test response handling
-        const test = db.getActiveTest(msg.chat.id);
-        if (!test) return;
-
-        if (isOnCooldown(msg.chat.id, 'text')) {
-            addToMessageQueue(msg.chat.id, "Veuillez attendre un moment avant d'envoyer un nouveau message.");
-            return;
-        }
-
-        console.log(`Text message received from chat ${msg.chat.id}: ${msg.text.substring(0, 20)}...`);
-        await handleTestResponse(bot, msg);
-    }
-});
-
-async function handleTestResponse(bot, msg) {
-    const test = db.getActiveTest(msg.chat.id);
-    if (!test) {
-        console.log(`Ignoring message - no active test for chat ${msg.chat.id}`);
-        return;
-    }
-
-    // Vérifier si un message est en cours de traitement
-    if (!acquireLock(msg.chat.id)) {
-        console.log(`Message skipped for chat ${msg.chat.id} - lock active`);
-        return;
-    }
-
-    try {
-        await commands.handleTestResponse(bot, msg);
-    } finally {
-        // Toujours libérer le verrou à la fin
-        releaseLock(msg.chat.id);
-    }
-}
 
 // Process message queues periodically with enhanced error handling
 setInterval(() => {

@@ -765,70 +765,116 @@ Créez, partagez et relevez des défis uniques.
 
 // Custom text handling functions
 async function handleNewCustomText(bot, chatId) {
-    const session = db.getUserSession(chatId);
-    if (!session) return;
+    console.log(`[Custom Text] Starting new custom text process for user ${chatId}`);
 
+    // Force create/update session
+    const session = db.getUserSession(chatId);
+    if (!session) {
+        console.log(`No session found for user ${chatId}, creating new session`);
+        db.createUserSession(chatId);
+    }
+
+    // Initialize or reset session state
     session.customTextState = 'awaiting_text';
-    await bot.sendMessage(chatId,
-        "📝 𝗘𝗡𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗘𝗠𝗘𝗡𝗧 𝗗'𝗨𝗡 𝗧𝗘𝗫𝗧𝗘\n\n" +
-        "Veuillez copier-coller votre texte complet.\n" +
-        "Le texte doit contenir au moins 100 caractères.");
+    session.pendingCustomText = null;
+
+    console.log(`[Custom Text] Initialized session state:`, session);
+
+    const menuText = `📝 𝗘𝗡𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗘𝗠𝗘𝗡𝗧 𝗗'𝗨𝗡 𝗧𝗘𝗫𝗧𝗘
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+𝗜𝗡𝗦𝗧𝗥𝗨𝗖𝗧𝗜𝗢𝗡𝗦:
+
+1. Copiez-collez votre texte complet ci-dessous
+2. Le texte doit contenir au moins 100 caractères
+3. Une fois validé, vous pourrez lui donner un nom
+
+━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+    try {
+        await bot.sendMessage(chatId, menuText);
+        console.log(`[Custom Text] Sent instructions to user ${chatId}`);
+    } catch (error) {
+        console.error(`[Custom Text] Error sending instructions to user ${chatId}:`, error);
+        session.customTextState = null;
+    }
 }
 
-
 async function handleCustomTextInput(bot, msg) {
-    const session = db.getUserSession(msg.chat.id);
-    if (!session?.customTextState) return false;
+    const chatId = msg.chat.id;
+    console.log(`[Custom Text] Received input from user ${chatId}`);
+
+    const session = db.getUserSession(chatId);
+    if (!session?.customTextState) {
+        console.log(`[Custom Text] No active custom text state for user ${chatId}`);
+        return false;
+    }
+
+    console.log(`[Custom Text] Processing input in state: ${session.customTextState}`);
 
     try {
         switch (session.customTextState) {
             case 'awaiting_text':
                 if (msg.text.length < 100) {
-                    await bot.sendMessage(msg.chat.id, 
+                    console.log(`[Custom Text] Text too short: ${msg.text.length} chars`);
+                    await bot.sendMessage(chatId, 
                         "⚠️ Le texte est trop court. Il doit contenir au moins 100 caractères.\n" +
                         `Longueur actuelle : ${msg.text.length} caractères.`);
                     return true;
                 }
+
                 session.pendingCustomText = msg.text;
                 session.customTextState = 'awaiting_name';
-                await bot.sendMessage(msg.chat.id, 
+                console.log(`[Custom Text] Saved text, awaiting name. Text length: ${msg.text.length}`);
+
+                await bot.sendMessage(chatId, 
                     "📝 Donnez un nom à votre texte :\n" +
                     "(Ce nom sera visible par tous les utilisateurs)");
                 return true;
 
             case 'awaiting_name':
                 if (!msg.text || msg.text.length > 50) {
-                    await bot.sendMessage(msg.chat.id, 
+                    console.log(`[Custom Text] Invalid name length: ${msg.text?.length}`);
+                    await bot.sendMessage(chatId, 
                         "⚠️ Le nom doit faire entre 1 et 50 caractères.");
                     return true;
                 }
-                const textId = db.saveCustomText(msg.chat.id, msg.text, session.pendingCustomText);
+
+                console.log(`[Custom Text] Saving text with name: ${msg.text}`);
+                const textId = db.saveCustomText(chatId, msg.text, session.pendingCustomText);
+
+                // Reset session state
                 session.customTextState = null;
                 session.pendingCustomText = null;
-                await bot.sendMessage(msg.chat.id,
-                    "✅ Texte enregistré avec succès!\n\n" +
+
+                await bot.sendMessage(chatId,
+                    "✅ 𝗧𝗘𝗫𝗧𝗘 𝗘𝗡𝗥𝗘𝗚𝗜𝗦𝗧𝗥É !\n\n" +
+                    "━━━━━━━━━━━━━━━━━━━━━━━━\n\n" +
                     "Vous pouvez maintenant :\n" +
                     "• Le retrouver dans 'Mes textes'\n" +
                     "• Le voir dans 'Textes préenregistrés'\n" +
-                    "• Commencer l'entraînement dessus");
+                    "• Commencer l'entraînement dessus\n\n" +
+                    "━━━━━━━━━━━━━━━━━━━━━━━━");
 
-                // Proposer directement de commencer l'entraînement
                 const keyboard = {
                     inline_keyboard: [
                         [{ text: "▶️ Commencer l'entraînement", callback_data: `start_custom_${textId}` }],
                         [{ text: "📝 Retour au menu custom", callback_data: "show_custom_menu" }]
                     ]
                 };
-                await bot.sendMessage(msg.chat.id, "Que souhaitez-vous faire ?", { reply_markup: keyboard });
+
+                await bot.sendMessage(chatId, "Que souhaitez-vous faire ?", { reply_markup: keyboard });
+                console.log(`[Custom Text] Successfully completed text creation for user ${chatId}`);
                 return true;
         }
     } catch (error) {
-        console.error('Error in handleCustomTextInput:', error);
-        await bot.sendMessage(msg.chat.id, 
-            "Une erreur est survenue lors de l'enregistrement du texte.\n" +
-            "Veuillez réessayer.");
+        console.error(`[Custom Text] Error processing input:`, error);
         session.customTextState = null;
         session.pendingCustomText = null;
+        await bot.sendMessage(chatId, 
+            "Une erreur est survenue lors de l'enregistrement du texte.\n" +
+            "Veuillez réessayer.");
         return true;
     }
     return false;
