@@ -175,8 +175,7 @@ Un véritable Oni frappe avec la rapidité de l'éclair.
 
 async function showStats(bot, chatId, username) {
     console.log(`Showing stats for user ${username}`);
-    const stats = db.getStats(chatId);
-    const userData = db.getUser(chatId);
+    const stats = username ? db.getStatsByUsername(username) : db.getStats(chatId);
 
     if (!stats) {
         await bot.sendMessage(chatId,
@@ -235,7 +234,7 @@ async function showUserList(bot, chatId) {
     const keyboard = {
         inline_keyboard: users.map(user => [{
             text: user.username,
-            callback_data: `user_stats_${user.id}`
+            callback_data: `user_stats_${user.username}`
         }])
     };
 
@@ -290,40 +289,13 @@ async function startSpeedTest(bot, chatId) {
     // Sauvegarder le username immédiatement
     db.saveUser(chatId, { username });
 
-    // Limiter le nombre de requêtes Gemini à 2-3 maximum
-    const geminiRequests = Math.floor(Math.random() * 2) + 2; // Entre 2 et 3 requêtes
-    console.log(`Planning to make ${geminiRequests} Gemini requests`);
-
-    // Remplir avec des noms au début
-    for (let i = 0; i < desiredQuestions - geminiRequests; i++) {
+    // Utiliser des noms uniquement pour l'initialisation
+    for (let i = 0; i < desiredQuestions; i++) {
         const randomName = names[Math.floor(Math.random() * names.length)];
         testTexts.push(randomName);
     }
 
-    // Ajouter les textes Gemini aux positions aléatoires
-    for (let i = 0; i < geminiRequests; i++) {
-        try {
-            console.log(`Making Gemini request ${i + 1}/${geminiRequests}`);
-            const text = await gemini.generateText();
-            console.log(`Gemini response for request ${i + 1}:`, text);
-
-            if (text) {
-                const position = Math.floor(Math.random() * (testTexts.length + 1));
-                testTexts.splice(position, 0, text);
-                console.log(`Successfully added Gemini text at position ${position}`);
-            } else {
-                console.log(`Gemini request ${i + 1} failed, using fallback`);
-                const randomName = names[Math.floor(Math.random() * names.length)];
-                testTexts.push(randomName);
-            }
-        } catch (error) {
-            console.error(`Error during Gemini request ${i + 1}:`, error);
-            const randomName = names[Math.floor(Math.random() * names.length)];
-            testTexts.push(randomName);
-        }
-    }
-
-    console.log('Final test texts:', testTexts);
+    console.log('Initial test texts:', testTexts);
     db.startTest(chatId, 'speed', testTexts, username);
 
     const instructionsMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
@@ -344,6 +316,31 @@ async function startSpeedTest(bot, chatId) {
 Écrivez 'next' pour commencer.`;
 
     await bot.sendMessage(chatId, instructionsMessage);
+}
+
+// Fonction pour générer du texte avec Gemini pendant un test actif
+async function generateNextTestWord(test) {
+    try {
+        // 30% de chance d'utiliser Gemini pendant le test
+        const useGemini = Math.random() < 0.3;
+        console.log(`Test type: ${test.type}, Using Gemini: ${useGemini}`);
+
+        if (useGemini) {
+            console.log('Attempting to generate text with Gemini');
+            const text = await gemini.generateText();
+            if (text) {
+                console.log('Successfully generated Gemini text:', text);
+                return text;
+            }
+        }
+    } catch (error) {
+        console.error('Error generating Gemini text:', error);
+    }
+
+    // Fallback sur un nom aléatoire
+    const randomName = names[Math.floor(Math.random() * names.length)];
+    console.log('Using fallback name:', randomName);
+    return randomName;
 }
 
 async function startPrecisionTraining(bot, chatId) {
@@ -437,10 +434,13 @@ async function generateSpeedTestWords() {
     return testTexts;
 }
 
-// Modifier la fonction handleTestResponse pour gérer les verrous
+
 async function handleTestResponse(bot, msg) {
     const test = db.getActiveTest(msg.chat.id);
-    if (!test) return;
+    if (!test) {
+        console.log(`Ignoring message - no active test for chat ${msg.chat.id}`);
+        return;
+    }
 
     // Vérifier si un message est en cours de traitement
     if (!acquireLock(msg.chat.id)) {
@@ -448,9 +448,8 @@ async function handleTestResponse(bot, msg) {
         return;
     }
 
-    console.log(`Handling test response for user ${test.username} (${msg.chat.id})`);
-
     try {
+        console.log(`Processing message for chat ${msg.chat.id}: "${msg.text}"`);
         // Liste des variations acceptables de "next"
         const nextCommands = ['next', 'nex', 'newt', 'nexr', 'nxt'];
         if (nextCommands.includes(msg.text.toLowerCase())) {
@@ -467,6 +466,14 @@ async function handleTestResponse(bot, msg) {
 
             const startTime = now();
             test.startTime = startTime;
+
+            // Générer dynamiquement le prochain mot si c'est un test de vitesse
+            if (test.type === 'speed') {
+                console.log('Generating next word for speed test');
+                const nextWord = await generateNextTestWord(test);
+                test.words[test.currentIndex] = nextWord;
+                console.log(`Next word set to: ${nextWord}`);
+            }
 
             const currentWord = test.words[test.currentIndex];
             const user = db.getUser(msg.chat.id);
@@ -609,7 +616,8 @@ async function finishTest(bot, chatId) {
 
         // Get username from Telegram
         const chat = await bot.getChat(chatId);
-        const username = chat.username || test.username || `User_${chatId}`;
+        const user = await bot.getChatMember(chatId, chatId);
+        const username = user.user.first_name || chat.username || `User_${chatId}`;
 
         const stats = {
             wpm: Math.round(avgWpm),

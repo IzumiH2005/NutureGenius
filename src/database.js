@@ -26,6 +26,7 @@ const db = {
         // Ensure username is always updated if provided
         if (data.username) {
             existingData.username = data.username;
+            console.log(`Updated username for ${userId} to ${data.username}`);
         }
         users.set(userId, { ...existingData, ...data });
         console.log(`User data saved for ${userId} (${data.username || 'Unknown'}):`, data);
@@ -35,6 +36,12 @@ const db = {
         const userData = users.get(userId);
         console.log(`Retrieving user data for ${userId}:`, userData);
         return userData;
+    },
+
+    getUserByUsername(username) {
+        const foundUser = Array.from(users.values()).find(user => user.username === username);
+        console.log(`Looking for user with username ${username}:`, foundUser);
+        return foundUser;
     },
 
     getAllUsers() {
@@ -146,6 +153,12 @@ const db = {
         const userData = users.get(userId);
         console.log(`Retrieving stats for user ${userId}:`, userData);
         return userData ? userData.stats : null;
+    },
+
+    getStatsByUsername(username) {
+        const user = this.getUserByUsername(username);
+        console.log(`Getting stats for username ${username}:`, user?.stats);
+        return user ? user.stats : null;
     },
 
     // Cleanup function now only cleans completed tests

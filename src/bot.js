@@ -178,10 +178,10 @@ bot.on('callback_query', async (query) => {
 
     try {
         if (query.data.startsWith('user_stats_')) {
-            const userId = query.data.split('_')[2];
-            const user = db.getUser(userId);
-            if (user) {
-                await commands.showStats(bot, chatId, user.username);
+            const username = query.data.split('_')[2];
+            const stats = db.getStatsByUsername(username);
+            if (stats) {
+                await commands.showStats(bot, chatId, username);
             } else {
                 await bot.sendMessage(chatId, "Utilisateur non trouvé.");
             }
@@ -293,6 +293,10 @@ handleCommand(/\/end/, async (msg) => {
 // Handle text messages for tests with cooldown
 bot.on('message', async (msg) => {
     if (msg.text && !msg.text.startsWith('/')) {
+        // Ne traiter que les messages pendant un test actif
+        const test = db.getActiveTest(msg.chat.id);
+        if (!test) return;
+
         if (isOnCooldown(msg.chat.id, 'text')) {
             addToMessageQueue(msg.chat.id, "Veuillez attendre un moment avant d'envoyer un nouveau message.");
             return;
