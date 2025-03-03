@@ -16,6 +16,16 @@ const RATE_LIMIT_DELAY = 2000; // 2 secondes entre chaque appel
 const generatedCache = new Set();
 const MAX_CACHE_SIZE = 1000;
 
+// Métriques pour le monitoring
+const metrics = {
+    totalCalls: 0,
+    successfulCalls: 0,
+    cacheHits: 0,
+    errors: 0,
+    averageResponseTime: 0,
+    promptDistribution: {}
+};
+
 // Fonction pour nettoyer la réponse
 function cleanResponse(text) {
     return text
@@ -24,11 +34,17 @@ function cleanResponse(text) {
         .replace(/^\s*[-•]\s*/, '') // Supprime les puces au début
         .replace(/\s{2,}/g, ' ') // Normalise les espaces
         .replace(/\(.*?\)/g, '') // Supprime les parenthèses et leur contenu
+        .replace(/\s*[-—]\s*[\w\s]+$/, '') // Supprime l'attribution à la fin (ex: "- Nietzsche")
+        .replace(/\.{2,}/g, '.') // Remplace les points de suspension par un point
+        .replace(/\s*\[[^\]]*\]/g, '') // Supprime les annotations entre crochets
         .trim();
 }
 
 async function generateText() {
     try {
+        metrics.totalCalls++;
+        const startTime = Date.now();
+
         // Gestion du rate limiting
         const now = Date.now();
         const timeSinceLastCall = now - lastCallTime;
@@ -109,6 +125,10 @@ async function generateText() {
         const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)];
         console.log(`Début de la génération avec le prompt: ${selectedPrompt}`);
 
+        // Mise à jour des métriques de distribution des prompts
+        const promptCategory = selectedPrompt.split(' ')[0];
+        metrics.promptDistribution[promptCategory] = (metrics.promptDistribution[promptCategory] || 0) + 1;
+
         lastCallTime = Date.now();
         const result = await model.generateContent(selectedPrompt);
         const response = await result.response;
@@ -122,6 +142,7 @@ async function generateText() {
             // Gestion du cache
             if (generatedCache.has(finalText)) {
                 console.log('Texte déjà généré, nouvelle tentative...');
+                metrics.cacheHits++;
                 return generateText(); // Récursion pour obtenir un nouveau texte
             }
 
@@ -133,12 +154,18 @@ async function generateText() {
             generatedCache.add(finalText);
 
             console.log(`Texte final: "${finalText}"`);
+
+            // Mise à jour des métriques
+            metrics.successfulCalls++;
+            metrics.averageResponseTime = ((metrics.averageResponseTime * (metrics.successfulCalls - 1)) + (Date.now() - startTime)) / metrics.successfulCalls;
+
             return finalText;
         }
 
         // Gestion du cache pour les textes courts
         if (generatedCache.has(text)) {
             console.log('Texte déjà généré, nouvelle tentative...');
+            metrics.cacheHits++;
             return generateText(); // Récursion pour obtenir un nouveau texte
         }
 
@@ -150,15 +177,31 @@ async function generateText() {
         generatedCache.add(text);
 
         console.log(`Texte final: "${text}"`);
+
+        // Mise à jour des métriques
+        metrics.successfulCalls++;
+        metrics.averageResponseTime = ((metrics.averageResponseTime * (metrics.successfulCalls - 1)) + (Date.now() - startTime)) / metrics.successfulCalls;
+
         return text;
 
     } catch (error) {
         console.error('Erreur lors de la génération du texte:', error);
+        metrics.errors++;
 
-        // En cas d'erreur, on essaie avec un prompt plus simple
+        // Liste de prompts de fallback diversifiés
+        const fallbackPrompts = [
+            "Donne une phrase simple et originale.",
+            "Exprime une pensée courte et impactante.",
+            "Crée une expression inspirante en une ligne.",
+            "Formule une réflexion concise sur la vie.",
+            "Compose une phrase motivante."
+        ];
+
+        // En cas d'erreur, on essaie avec un prompt de fallback aléatoire
         try {
-            const simplePrompt = "Donne une phrase simple et originale.";
-            const result = await model.generateContent(simplePrompt);
+            const fallbackPrompt = fallbackPrompts[Math.floor(Math.random() * fallbackPrompts.length)];
+            console.log(`Tentative de fallback avec le prompt: ${fallbackPrompt}`);
+            const result = await model.generateContent(fallbackPrompt);
             const response = await result.response;
             return cleanResponse(response.text()).substring(0, 100);
         } catch (fallbackError) {
@@ -168,6 +211,17 @@ async function generateText() {
     }
 }
 
+// Fonction pour obtenir les métriques actuelles
+function getMetrics() {
+    return {
+        ...metrics,
+        cacheSize: generatedCache.size,
+        successRate: (metrics.successfulCalls / metrics.totalCalls * 100).toFixed(2) + '%',
+        averageResponseTime: Math.round(metrics.averageResponseTime) + 'ms'
+    };
+}
+
 module.exports = {
-    generateText
+    generateText,
+    getMetrics
 };
