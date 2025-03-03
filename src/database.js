@@ -55,25 +55,35 @@ setInterval(cleanupInactiveSessions, 5 * 60 * 1000);
 
 // Fonction pour nettoyer uniquement les tests terminés
 function cleanupActiveTests() {
+    console.log('Starting cleanup of completed tests');
     const activeTestsArray = Array.from(activeTests.entries());
+    let cleanedCount = 0;
+
     activeTestsArray.forEach(([userId, test]) => {
         // Ne nettoie que les tests qui sont terminés
         if (test.currentIndex >= test.words.length) {
+            console.log(`Found completed test for user ${userId}, cleaning up...`);
+
             if (test.countdownInterval) {
                 clearInterval(test.countdownInterval);
                 test.countdownInterval = null;
+                console.log(`Cleared countdown interval for user ${userId}`);
             }
 
             const session = userSessions.get(userId);
             if (session) {
                 session.currentTest = null;
+                console.log(`Cleared session test reference for user ${userId}`);
             }
 
             activeTests.delete(userId);
-            console.log(`Cleaned up completed test for user ${userId}`);
+            cleanedCount++;
+            console.log(`Successfully cleaned up test for user ${userId}`);
         }
     });
-    console.log('Cleanup of completed tests finished');
+
+    console.log(`Cleanup completed. Removed ${cleanedCount} completed tests`);
+    console.log(`Remaining active tests: ${activeTests.size}`);
 }
 
 const db = {

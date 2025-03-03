@@ -520,6 +520,7 @@ async function generateSpeedTestWords() {
 }
 
 
+
 async function handleTestResponse(bot, msg) {
     const userId = msg.from.id;
     const test = db.getActiveTest(userId);
@@ -529,12 +530,19 @@ async function handleTestResponse(bot, msg) {
         testState: test ? {
             currentIndex: test.currentIndex,
             wordsLength: test.words?.length,
-            lastQuestionTime: test.lastQuestionTime
+            lastQuestionTime: test.lastQuestionTime,
+            hasCountdown: !!test.countdownInterval
         } : null
     });
 
     if (!test) {
         console.log(`[handleTestResponse] No active test for user ${userId}`);
+        return;
+    }
+
+    // Ne pas traiter les messages si un compte à rebours est en cours
+    if (test.countdownInterval) {
+        console.log(`[handleTestResponse] Ignoring message - countdown in progress for user ${userId}`);
         return;
     }
 
@@ -549,15 +557,21 @@ async function handleTestResponse(bot, msg) {
         if (nextCommands.includes(msg.text.toLowerCase())) {
             console.log(`[handleTestResponse] Next command received for user ${userId}`);
 
+            // Vérifier si le test est déjà terminé
             if (test.currentIndex >= test.words.length) {
+                console.log(`[handleTestResponse] Test already completed for user ${userId}`);
                 await finishTest(bot, msg.chat.id, userId);
                 return;
             }
 
+            // Nettoyer l'intervalle de countdown existant
             if (test.countdownInterval) {
                 clearInterval(test.countdownInterval);
                 test.countdownInterval = null;
             }
+
+            // Réinitialiser lastQuestionTime avant d'envoyer une nouvelle question
+            test.lastQuestionTime = null;
 
             const startTime = now();
             test.startTime = startTime;
@@ -591,6 +605,7 @@ async function handleTestResponse(bot, msg) {
 
                     if (remaining <= 0) {
                         clearInterval(interval);
+                        test.countdownInterval = null;
                         try {
                             await bot.editMessageText(
                                 `Q/ ${currentWord}\nTemps écoulé! ⏰`,
@@ -624,6 +639,7 @@ async function handleTestResponse(bot, msg) {
         // Si ce n'est pas une commande "next", traiter comme une réponse
         if (!test.lastQuestionTime) {
             console.log(`[handleTestResponse] Ignoring response - no active question for user ${userId}`);
+            releaseLock(userId);
             return;
         }
 
@@ -637,19 +653,26 @@ async function handleTestResponse(bot, msg) {
         const accuracy = typingTest.calculateAccuracy(currentWord, msg.text);
         const wpm = typingTest.calculateWPM(msg.text, adjustedTime);
 
-        let success = test.type.includes('speed') ?
-            wpm >= 20 :
-            accuracy >= 70;
+        // Critères de succès révisés
+        let success = false;
+        if (test.type.includes('speed')) {
+            success = wpm >= 20 && accuracy >= 70;
+        } else {
+            success = accuracy >= 70;
+        }
 
         if (test.type.includes('training')) {
             const user = db.getUser(userId);
             if (user?.selectedRank) {
-                success = test.type.includes('speed') ?
-                    wpm >= 20 && responseTime <= test.timeAllowed :
-                    accuracy >= 70 && responseTime <= test.timeAllowed;
+                if (test.type.includes('speed')) {
+                    success = wpm >= 20 && accuracy >= 70 && responseTime <= test.timeAllowed;
+                } else {
+                    success = accuracy >= 70 && responseTime <= test.timeAllowed;
+                }
             }
         }
 
+        // Mettre à jour les résultats avant d'incrémenter l'index
         db.updateTestResult(userId, {
             word: currentWord,
             response: msg.text,
@@ -674,9 +697,11 @@ ${success ? '✅ Succès!' : '❌ Essayez encore!'}
 
         await bot.sendMessage(msg.chat.id, resultMessage);
 
+        // Incrémenter l'index et réinitialiser lastQuestionTime après le traitement
         test.currentIndex++;
-        test.lastQuestionTime = null; // Reset lastQuestionTime after processing response
+        test.lastQuestionTime = null;
 
+        // Vérifier si le test est terminé
         if (test.currentIndex >= test.words.length) {
             await finishTest(bot, msg.chat.id, userId);
         }
