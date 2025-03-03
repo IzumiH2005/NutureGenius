@@ -173,6 +173,7 @@ Un véritable Oni frappe avec la rapidité de l'éclair.
     });
 }
 
+// Modification de la fonction showStats pour supporter les deux cas d'utilisation
 async function showStats(bot, chatId, msg) {
     // Si msg est une chaîne de caractères, c'est un appel depuis le panneau d'administration
     if (typeof msg === 'string') {

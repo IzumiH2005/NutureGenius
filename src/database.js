@@ -99,8 +99,9 @@ const db = {
     },
 
     getUserByUsername(username) {
+        console.log(`Looking for user with username ${username}`);
         const foundUser = Array.from(users.values()).find(user => user.username === username);
-        console.log(`Looking for user with username ${username}:`, foundUser);
+        console.log(`Found user:`, foundUser);
         return foundUser;
     },
 
@@ -211,29 +212,37 @@ const db = {
 
         const cleanTestType = testType.replace('_training', '');
         userData.stats = userData.stats || {};
+
+        // Si les stats existent déjà, on garde les meilleures performances
+        const existingStats = userData.stats[cleanTestType] || {};
         userData.stats[cleanTestType] = {
             wpm: stats.wpm,
             accuracy: stats.accuracy,
-            bestWpm: stats.bestWpm,
-            bestAccuracy: stats.bestAccuracy,
+            bestWpm: Math.max(stats.bestWpm, existingStats.bestWpm || 0),
+            bestAccuracy: Math.max(stats.bestAccuracy, existingStats.bestAccuracy || 0),
             rank: stats.rank
         };
 
         users.set(userId, userData);
-        console.log(`Stats saved for user ${username} (${userId}):`, stats);
+        console.log(`Stats saved for user ${username} (${userId}):`, userData.stats[cleanTestType]);
     },
 
     getStats(userId) {
         updateSessionActivity(userId);
         const userData = users.get(userId);
-        console.log(`Retrieving stats for user ${userId}:`, userData);
+        console.log(`Retrieving stats for user ${userId}:`, userData?.stats);
         return userData ? userData.stats : null;
     },
 
     getStatsByUsername(username) {
+        console.log(`Getting stats for username ${username}`);
         const user = this.getUserByUsername(username);
-        console.log(`Getting stats for username ${username}:`, user?.stats);
-        return user ? user.stats : null;
+        if (!user) {
+            console.log(`No user found with username ${username}`);
+            return null;
+        }
+        console.log(`Found stats for username ${username}:`, user.stats);
+        return user.stats;
     },
 
     // Session management
