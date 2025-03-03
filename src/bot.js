@@ -116,7 +116,6 @@ async function processMessageQueue(chatId) {
 
 const messageLocks = new Map();
 
-// Gestion des verrous pour éviter les doubles messages
 function acquireLock(chatId) {
     if (messageLocks.get(chatId)) {
         return false;
@@ -128,6 +127,10 @@ function acquireLock(chatId) {
 function releaseLock(chatId) {
     messageLocks.delete(chatId);
 }
+
+// Instance unique ID pour éviter les conflits
+const INSTANCE_ID = Math.random().toString(36).substring(7);
+console.log(`Bot instance ID: ${INSTANCE_ID}`);
 
 // Amélioration : Configuration du bot avec options de polling spécifiques
 const bot = new TelegramBot(token, {
@@ -146,21 +149,22 @@ async function startPolling() {
     }
 
     try {
-        console.log('Starting polling...');
+        console.log(`Starting polling for instance ${INSTANCE_ID}...`);
 
-        // Arrêter tout polling existant
-        await bot.stopPolling();
-
-        // Nettoyer explicitement les webhooks
+        // Force cleanup of any existing webhooks or polling
         try {
-            await bot.deleteWebHook();
-            console.log('Webhook deleted successfully');
-        } catch (webhookError) {
-            console.warn('Error deleting webhook:', webhookError);
+            await bot.deleteWebHook({ drop_pending_updates: true });
+            console.log('Webhook deleted and pending updates dropped');
+            await bot.stopPolling();
+            console.log('Previous polling stopped');
+        } catch (cleanupError) {
+            console.warn('Error during cleanup:', cleanupError);
         }
 
-        // Attendre un peu avant de redémarrer le polling
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Attendre un délai aléatoire pour éviter les démarrages simultanés
+        const randomDelay = Math.floor(Math.random() * 2000) + 1000;
+        await new Promise(resolve => setTimeout(resolve, randomDelay));
+        console.log(`Waited ${randomDelay}ms before starting polling`);
 
         // Démarrer le polling avec des options spécifiques
         await bot.startPolling({
@@ -176,22 +180,34 @@ async function startPolling() {
 
         isPolling = true;
         pollingErrors = 0;
-        console.log('Polling started successfully');
+        console.log(`Polling started successfully for instance ${INSTANCE_ID}`);
     } catch (error) {
         console.error('Error starting polling:', error);
         isPolling = false;
+
+        if (error.code === 'ETELEGRAM' && error.response?.statusCode === 409) {
+            console.log('Conflict detected with another instance, initiating shutdown...');
+            await gracefulShutdown('CONFLICT');
+        }
     }
 }
 
 // Handle polling errors with improved recovery
 bot.on('polling_error', async (error) => {
-    console.error('Polling error:', error);
+    console.error(`[Instance ${INSTANCE_ID}] Polling error:`, error);
     pollingErrors++;
 
     if (error.code === 'ETELEGRAM' && error.response?.statusCode === 409) {
         console.log('Conflict detected with another instance, waiting before retry...');
         isPolling = false;
         await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // Si le conflit persiste après plusieurs tentatives, arrêter cette instance
+        if (pollingErrors >= MAX_POLLING_ERRORS) {
+            console.log('Too many conflicts, shutting down this instance...');
+            await gracefulShutdown('PERSISTENT_CONFLICT');
+            return;
+        }
     }
 
     if (pollingErrors >= MAX_POLLING_ERRORS) {
@@ -206,26 +222,26 @@ bot.on('polling_error', async (error) => {
 });
 
 // Amélioration : Gestion propre de l'arrêt du bot
-process.once('SIGINT', () => gracefulShutdown('SIGINT'));
-process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
-
 async function gracefulShutdown(signal) {
-    console.log(`Received ${signal}, starting graceful shutdown...`);
+    console.log(`[Instance ${INSTANCE_ID}] Received ${signal}, starting graceful shutdown...`);
 
     try {
         // Arrêter le polling
         isPolling = false;
         await bot.stopPolling();
+        console.log('Polling stopped');
 
-        // Nettoyer les webhooks
-        await bot.deleteWebHook();
+        // Nettoyer les webhooks et les mises à jour en attente
+        await bot.deleteWebHook({ drop_pending_updates: true });
+        console.log('Webhook deleted and pending updates dropped');
 
-        // Vider les queues de messages
+        // Vider les queues de messages et les verrous
         messageQueue.clear();
         messageCooldowns.clear();
         messageLocks.clear();
+        console.log('Message queues and locks cleared');
 
-        console.log('Bot shutdown completed successfully');
+        console.log(`[Instance ${INSTANCE_ID}] Bot shutdown completed successfully`);
     } catch (error) {
         console.error('Error during shutdown:', error);
     } finally {
@@ -233,8 +249,14 @@ async function gracefulShutdown(signal) {
     }
 }
 
-// Start initial polling
-startPolling().catch(console.error);
+// Gestion des signaux d'arrêt
+process.once('SIGINT', () => gracefulShutdown('SIGINT'));
+process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Démarrage initial avec délai aléatoire pour éviter les conflits
+setTimeout(() => {
+    startPolling().catch(console.error);
+}, Math.random() * 2000);
 
 // Handle /start command
 bot.onText(/\/start/, async (msg) => {

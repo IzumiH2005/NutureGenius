@@ -40,8 +40,7 @@ const calculateAccuracy = (original, typed) => {
         const wordLength = Math.max(origWord.length, typeWord.length);
 
         // Score maximum possible pour ce mot
-        const wordMaxScore = wordLength * 2; // Doublé pour permettre les bonus
-        maxPossibleScore += wordMaxScore;
+        maxPossibleScore += wordLength;
 
         // Score de base pour les caractères corrects
         let wordScore = 0;
@@ -50,36 +49,13 @@ const calculateAccuracy = (original, typed) => {
         // Vérifier les caractères corrects
         for (let j = 0; j < minLength; j++) {
             if (origWord[j] === typeWord[j]) {
-                wordScore += 2; // 2 points pour chaque caractère correct
-            } else if (typeWord.includes(origWord[j])) {
-                wordScore += 1; // 1 point pour caractère présent mais mal placé
-            }
-        }
-
-        // Bonus pour mot parfaitement identique
-        if (origWord === typeWord) {
-            wordScore += wordLength; // Bonus égal à la longueur du mot
-        }
-        // Bonus pour préfixe correct (3 caractères ou plus)
-        else {
-            let prefixLength = 0;
-            while (prefixLength < minLength && 
-                   origWord[prefixLength] === typeWord[prefixLength]) {
-                prefixLength++;
-            }
-            if (prefixLength >= 3) {
-                wordScore += prefixLength;
+                wordScore += 1; // 1 point pour chaque caractère correct
             }
         }
 
         // Pénalité pour différence de longueur
         const lengthDiff = Math.abs(origWord.length - typeWord.length);
         wordScore = Math.max(0, wordScore - lengthDiff);
-
-        // Position bonus/malus
-        if (i === 0) {
-            wordScore *= 1.2; // 20% bonus pour le premier mot
-        }
 
         totalScore += wordScore;
     }
