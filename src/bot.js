@@ -129,13 +129,16 @@ function releaseLock(chatId) {
     messageLocks.delete(chatId);
 }
 
+// Amélioration : Configuration du bot avec options de polling spécifiques
 const bot = new TelegramBot(token, {
-    polling: false // Démarrage manuel du polling
+    polling: false, // Démarrage manuel du polling
+    filepath: false, // Désactive le stockage de fichiers local
+    webHook: false  // Désactive explicitement le webhook
 });
 
 console.log('Bot initialized successfully');
 
-// Function to start polling
+// Function to start polling with improved error handling
 async function startPolling() {
     if (isPolling) {
         console.log('Polling already active');
@@ -144,11 +147,33 @@ async function startPolling() {
 
     try {
         console.log('Starting polling...');
-        await bot.stopPolling(); // Ensure no existing polling
-        // Removed db.cleanup() call to preserve active tests
+
+        // Arrêter tout polling existant
+        await bot.stopPolling();
+
+        // Nettoyer explicitement les webhooks
+        try {
+            await bot.deleteWebHook();
+            console.log('Webhook deleted successfully');
+        } catch (webhookError) {
+            console.warn('Error deleting webhook:', webhookError);
+        }
+
+        // Attendre un peu avant de redémarrer le polling
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Démarrer le polling avec des options spécifiques
         await bot.startPolling({
-            timeout: 10
+            polling: {
+                interval: 300, // Intervalle entre les requêtes
+                autoStart: true,
+                params: {
+                    timeout: 10,
+                    allowed_updates: ['message', 'callback_query'], // Limite les types de mises à jour
+                }
+            }
         });
+
         isPolling = true;
         pollingErrors = 0;
         console.log('Polling started successfully');
@@ -158,10 +183,16 @@ async function startPolling() {
     }
 }
 
-// Handle polling errors
+// Handle polling errors with improved recovery
 bot.on('polling_error', async (error) => {
     console.error('Polling error:', error);
     pollingErrors++;
+
+    if (error.code === 'ETELEGRAM' && error.response?.statusCode === 409) {
+        console.log('Conflict detected with another instance, waiting before retry...');
+        isPolling = false;
+        await new Promise(resolve => setTimeout(resolve, 5000));
+    }
 
     if (pollingErrors >= MAX_POLLING_ERRORS) {
         console.log('Too many polling errors, restarting polling...');
@@ -173,6 +204,34 @@ bot.on('polling_error', async (error) => {
         }
     }
 });
+
+// Amélioration : Gestion propre de l'arrêt du bot
+process.once('SIGINT', () => gracefulShutdown('SIGINT'));
+process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+async function gracefulShutdown(signal) {
+    console.log(`Received ${signal}, starting graceful shutdown...`);
+
+    try {
+        // Arrêter le polling
+        isPolling = false;
+        await bot.stopPolling();
+
+        // Nettoyer les webhooks
+        await bot.deleteWebHook();
+
+        // Vider les queues de messages
+        messageQueue.clear();
+        messageCooldowns.clear();
+        messageLocks.clear();
+
+        console.log('Bot shutdown completed successfully');
+    } catch (error) {
+        console.error('Error during shutdown:', error);
+    } finally {
+        process.exit(0);
+    }
+}
 
 // Start initial polling
 startPolling().catch(console.error);
