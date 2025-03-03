@@ -182,20 +182,33 @@ async function showStats(bot, chatId, msg) {
             await bot.sendMessage(chatId, "Utilisateur non trouvé.");
             return;
         }
-        // Formater le message de statistiques pour l'administrateur
-        let statsMessage = `Stats pour l'utilisateur ${msg}:\n\n`;
+
+        let statsMessage = "━━━━━━━━━━━━━━━━━━━━━━━━\n";
+        statsMessage += "📊 𝗦𝗧𝗔𝗧𝗜𝗦𝗧𝗜𝗤𝗨𝗘𝗦\n\n";
+        statsMessage += `𝗨𝗧𝗜𝗟𝗜𝗦𝗔𝗧𝗘𝗨𝗥: ${msg}\n\n`;
+
         if (stats.precision) {
-            statsMessage += `Précision: ${stats.precision.accuracy}%\n`;
-            statsMessage += `Meilleure précision: ${stats.precision.bestAccuracy}%\n`;
-            statsMessage += `WPM: ${stats.precision.wpm}\n`;
-            statsMessage += `Rang: ${stats.precision.rank}\n\n`;
+            statsMessage += "🎯 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗣𝗥É𝗖𝗜𝗦𝗜𝗢𝗡\n";
+            statsMessage += `🎯 Précision moyenne: ${stats.precision.accuracy}%\n`;
+            statsMessage += `🎯 Meilleure précision: ${stats.precision.bestAccuracy}%\n`;
+            statsMessage += `⚡ Vitesse: ${stats.precision.wpm} WPM\n`;
+            statsMessage += `🏆 Rang: ${stats.precision.rank}\n\n`;
         }
+
         if (stats.speed) {
-            statsMessage += `Vitesse moyenne: ${stats.speed.wpm} WPM\n`;
-            statsMessage += `Meilleure vitesse: ${stats.speed.bestWpm} WPM\n`;
-            statsMessage += `Précision: ${stats.speed.accuracy}%\n`;
-            statsMessage += `Rang: ${stats.speed.rank}\n`;
+            statsMessage += "⚡ 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗩𝗜𝗧𝗘𝗦𝗦𝗘\n";
+            statsMessage += `⚡ Vitesse moyenne: ${stats.speed.wpm} WPM\n`;
+            statsMessage += `⚡ Meilleure vitesse: ${stats.speed.bestWpm} WPM\n`;
+            statsMessage += `🎯 Précision: ${stats.speed.accuracy}%\n`;
+            statsMessage += `🏆 Rang: ${stats.speed.rank}\n\n`;
         }
+
+        if (stats.speed?.wpm >= 76) {
+            statsMessage += "🔥 Badge obtenu: 白鬼 (Shiro Oni)";
+        }
+
+        statsMessage += "\n━━━━━━━━━━━━━━━━━━━━━━━━";
+
         await bot.sendMessage(chatId, statsMessage);
         return;
     }
