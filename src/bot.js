@@ -181,22 +181,21 @@ startPolling().catch(console.error);
 bot.onText(/\/start/, async (msg) => {
     if (isOnCooldown(msg.chat.id, 'start')) return;
 
-    const chatId = msg.chat.id;
-    const username = msg.from.first_name || msg.from.username || `User_${chatId}`;
+    const userId = msg.from.id; // ID de l'utilisateur qui a envoyé la commande
+    const username = msg.from.first_name || msg.from.username || `User_${userId}`;
     let progress = 0;
-    console.log(`Start command received from chat ${chatId} (${username})`);
+    console.log(`Start command received from user ${username} (${userId}) in chat ${msg.chat.id}`);
 
-    // Save user immediately with first_name
-    db.saveUser(chatId, { username });
+    // Sauvegarder l'utilisateur avec son ID personnel
+    db.saveUser(userId, { username });
 
-    const loadingMsg = await bot.sendMessage(chatId, 'Load...0%');
-
+    const loadingMsg = await bot.sendMessage(msg.chat.id, 'Load...0%');
     const interval = setInterval(async () => {
         progress += 10;
         if (progress <= 100) {
             try {
                 await bot.editMessageText(`Load...${progress}%`, {
-                    chat_id: chatId,
+                    chat_id: msg.chat.id,
                     message_id: loadingMsg.message_id
                 });
             } catch (error) {
@@ -206,7 +205,7 @@ bot.onText(/\/start/, async (msg) => {
         } else {
             clearInterval(interval);
             try {
-                addToMessageQueue(chatId, "Ce bot est un Bot spécial d'entraînement pour la vitesse et la précision. Cliquez sur continuer pour commencer.", {
+                addToMessageQueue(msg.chat.id, "Ce bot est un Bot spécial d'entraînement pour la vitesse et la précision. Cliquez sur continuer pour commencer.", {
                     reply_markup: {
                         inline_keyboard: [[{ text: "Continuer", callback_data: "show_menu" }]]
                     }
@@ -250,6 +249,12 @@ bot.on('callback_query', async (query) => {
             return;
         }
 
+        // Créer un faux objet msg pour la compatibilité
+        const msgObj = {
+            chat: { id: chatId },
+            from: query.from // Utiliser les informations de l'utilisateur depuis query
+        };
+
         switch (query.data) {
             case 'show_menu':
                 await commands.showMenu(bot, chatId);
@@ -261,13 +266,13 @@ bot.on('callback_query', async (query) => {
                 await commands.showSpeedMenu(bot, chatId);
                 break;
             case 'precision_test':
-                await commands.startPrecisionTest(bot, chatId);
+                await commands.startPrecisionTest(bot, chatId, msgObj);
+                break;
+            case 'speed_test':
+                await commands.startSpeedTest(bot, chatId, msgObj);
                 break;
             case 'precision_training':
                 await commands.startPrecisionTraining(bot, chatId);
-                break;
-            case 'speed_test':
-                await commands.startSpeedTest(bot, chatId);
                 break;
             case 'speed_training':
                 await commands.startSpeedTraining(bot, chatId);
@@ -284,8 +289,9 @@ bot.on('callback_query', async (query) => {
 // Handle commands with cooldown
 const handleCommand = async (command, handler) => {
     bot.onText(command, async (msg) => {
-        if (isOnCooldown(msg.chat.id, command)) return;
-        console.log(`${command} command received from chat ${msg.chat.id}`);
+        const userId = msg.from.id;
+        if (isOnCooldown(userId, command)) return;
+        console.log(`${command} command received from user ${msg.from.username} (${userId})`);
         await handler(msg);
     });
 };
@@ -302,7 +308,7 @@ handleCommand(/\/help/, async (msg) => {
 
 // Handle /stats command
 handleCommand(/\/stats/, async (msg) => {
-    await commands.showStats(bot, msg.chat.id, msg.from.username);
+    await commands.showStats(bot, msg.chat.id, msg);
 });
 
 // Handle /user command (admin only)
@@ -347,19 +353,50 @@ handleCommand(/\/end/, async (msg) => {
 // Handle text messages for tests with enhanced session management
 bot.on('message', async (msg) => {
     if (msg.text && !msg.text.startsWith('/')) {
-        const session = db.getUserSession(msg.chat.id);
-        if (!session) return;
+        const userId = msg.from.id;
+        const nextCommands = ['next', 'nex', 'newt', 'nexr', 'nxt', 'n\'est', 'n\'est\'', '\'est'];
 
-        // Ne traiter que les messages pendant un test actif
-        const test = db.getActiveTest(msg.chat.id);
-        if (!test) return;
+        console.log(`Received message from user ${userId}: "${msg.text}"`);
 
-        if (isOnCooldown(msg.chat.id, 'text')) {
+        // Vérifier d'abord si c'est une commande "next"
+        if (nextCommands.includes(msg.text.toLowerCase())) {
+            console.log(`Next command detected for user ${userId}`);
+            try {
+                await handleTestResponse(bot, msg);
+            } catch (error) {
+                console.error(`Error handling next command for user ${userId}:`, error);
+                addToMessageQueue(msg.chat.id, "Une erreur s'est produite. Veuillez réessayer.");
+            }
+            return;
+        }
+
+        // Pour les autres messages, vérifier le test actif
+        const test = db.getActiveTest(userId);
+        if (!test) {
+            console.log(`No active test for user ${userId}, ignoring message`);
+            return;
+        }
+
+        if (!test.lastQuestionTime) {
+            console.log(`No active question for user ${userId}, ignoring message`);
+            return;
+        }
+
+        // Vérifier si le message est une réponse à une question récente
+        const now = Date.now();
+        const timeSinceQuestion = now - test.lastQuestionTime;
+        if (timeSinceQuestion > 30000) { // 30 secondes maximum pour répondre
+            console.log(`Response timeout for user ${userId} (${timeSinceQuestion}ms)`);
+            return;
+        }
+
+        if (isOnCooldown(userId, 'text')) {
+            console.log(`Message cooldown active for user ${userId}`);
             addToMessageQueue(msg.chat.id, "Veuillez attendre un moment avant d'envoyer un nouveau message.");
             return;
         }
 
-        console.log(`Text message received from chat ${msg.chat.id}: ${msg.text.substring(0, 20)}...`);
+        console.log(`Processing valid response from user ${userId}`);
         await handleTestResponse(bot, msg);
     }
 });

@@ -173,9 +173,38 @@ Un véritable Oni frappe avec la rapidité de l'éclair.
     });
 }
 
-async function showStats(bot, chatId, username) {
-    console.log(`Showing stats for user ${username}`);
-    const stats = username ? db.getStatsByUsername(username) : db.getStats(chatId);
+async function showStats(bot, chatId, msg) {
+    // Si msg est une chaîne de caractères, c'est un appel depuis le panneau d'administration
+    if (typeof msg === 'string') {
+        const stats = db.getStatsByUsername(msg);
+        if (!stats) {
+            await bot.sendMessage(chatId, "Utilisateur non trouvé.");
+            return;
+        }
+        // Formater le message de statistiques pour l'administrateur
+        let statsMessage = `Stats pour l'utilisateur ${msg}:\n\n`;
+        if (stats.precision) {
+            statsMessage += `Précision: ${stats.precision.accuracy}%\n`;
+            statsMessage += `Meilleure précision: ${stats.precision.bestAccuracy}%\n`;
+            statsMessage += `WPM: ${stats.precision.wpm}\n`;
+            statsMessage += `Rang: ${stats.precision.rank}\n\n`;
+        }
+        if (stats.speed) {
+            statsMessage += `Vitesse moyenne: ${stats.speed.wpm} WPM\n`;
+            statsMessage += `Meilleure vitesse: ${stats.speed.bestWpm} WPM\n`;
+            statsMessage += `Précision: ${stats.speed.accuracy}%\n`;
+            statsMessage += `Rang: ${stats.speed.rank}\n`;
+        }
+        await bot.sendMessage(chatId, statsMessage);
+        return;
+    }
+
+    // Sinon, c'est un utilisateur demandant ses propres stats
+    const userId = msg.from.id;
+    const username = msg.from.first_name || msg.from.username || `User_${userId}`;
+    console.log(`Showing stats for user ${username} (${userId})`);
+
+    const stats = db.getStats(userId);
 
     if (!stats) {
         await bot.sendMessage(chatId,
@@ -249,16 +278,26 @@ async function showUserList(bot, chatId) {
     console.log('User list keyboard created with users:', users.map(u => u.username).join(', '));
 }
 
-async function startPrecisionTest(bot, chatId) {
+async function startPrecisionTest(bot, chatId, msg) {
     const testWords = words.sort(() => 0.5 - Math.random()).slice(0, 10);
-    const chat = await bot.getChat(chatId);
-    const user = await bot.getChatMember(chatId, chatId);
-    const username = user.user.first_name || chat.username || `User_${chatId}`;
+    const userId = msg.from.id;
+    const username = msg.from.first_name || msg.from.username || `User_${userId}`;
 
-    // Sauvegarder le username immédiatement
-    db.saveUser(chatId, { username });
+    console.log(`Starting precision test for user ${username} (${userId})`);
 
-    db.startTest(chatId, 'precision', testWords, username);
+    // Sauvegarder avec l'ID de l'utilisateur, pas l'ID du chat
+    db.saveUser(userId, { username });
+
+    // Initialiser lastQuestionTime à null pour permettre la première question
+    const test = {
+        type: 'precision',
+        words: testWords,
+        username: username,
+        currentIndex: 0,
+        lastQuestionTime: null
+    };
+
+    db.startTest(userId, 'precision', testWords, username, test);
 
     const instructionsMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗣𝗥É𝗖𝗜𝗦𝗜𝗢𝗡
@@ -280,14 +319,14 @@ async function startPrecisionTest(bot, chatId) {
     await bot.sendMessage(chatId, instructionsMessage);
 }
 
-async function startSpeedTest(bot, chatId) {
+async function startSpeedTest(bot, chatId, msg) {
     const testTexts = [];
     const desiredQuestions = 10;
-    const user = await bot.getChatMember(chatId, chatId);
-    const username = user.user.first_name || `User_${chatId}`;
+    const userId = msg.from.id; // ID de l'utilisateur
+    const username = msg.from.first_name || msg.from.username || `User_${userId}`;
 
-    // Sauvegarder le username immédiatement
-    db.saveUser(chatId, { username });
+    // Sauvegarder l'utilisateur avec son ID personnel
+    db.saveUser(userId, { username });
 
     // Utiliser des noms uniquement pour l'initialisation
     for (let i = 0; i < desiredQuestions; i++) {
@@ -296,7 +335,7 @@ async function startSpeedTest(bot, chatId) {
     }
 
     // Déterminer le nombre de textes Gemini à générer (entre 3 et 5)
-    const numGeminiTexts = Math.floor(Math.random() * 3) + 3; // Génère 3, 4 ou 5
+    const numGeminiTexts = Math.floor(Math.random() * 3) + 3;
     console.log(`Planning to replace ${numGeminiTexts} words with Gemini texts`);
 
     // Sélectionner des positions aléatoires pour les textes Gemini
@@ -315,19 +354,21 @@ async function startSpeedTest(bot, chatId) {
             const text = await gemini.generateText();
 
             if (text) {
-                console.log(`Successfully generated text at position ${positions[i]}: "${text}"`);
-                testTexts[positions[i]] = text;
+                // Nettoyer le texte des guillemets et points de suspension
+                const cleanedText = text.replace(/["""]/g, '').replace(/\.{2,}/g, '').trim();
+                console.log(`Successfully generated text at position ${positions[i]}: "${cleanedText}"`);
+                testTexts[positions[i]] = cleanedText;
             } else {
                 console.log(`Gemini generation failed for position ${positions[i]}, keeping original word`);
             }
         } catch (error) {
             console.error(`Error generating Gemini text for position ${positions[i]}:`, error);
-            // On garde le nom déjà présent en cas d'erreur
         }
     }
 
     console.log('Initial test texts:', testTexts);
-    db.startTest(chatId, 'speed', testTexts, username);
+    // Démarrer le test avec l'ID de l'utilisateur
+    db.startTest(userId, 'speed', testTexts, username);
 
     const instructionsMessage = `━━━━━━━━━━━━━━━━━━━━━━━━
 ⚡ 𝗧𝗘𝗦𝗧 𝗗𝗘 𝗩𝗜𝗧𝗘𝗦𝗦𝗘
@@ -465,31 +506,40 @@ async function generateSpeedTestWords() {
 }
 
 
-
 async function handleTestResponse(bot, msg) {
-    const test = db.getActiveTest(msg.chat.id);
+    const userId = msg.from.id;
+    const test = db.getActiveTest(userId);
+    console.log(`[handleTestResponse] Processing message for user ${userId}:`, {
+        hasTest: !!test,
+        text: msg.text,
+        testState: test ? {
+            currentIndex: test.currentIndex,
+            wordsLength: test.words?.length,
+            lastQuestionTime: test.lastQuestionTime
+        } : null
+    });
+
     if (!test) {
-        console.log(`Ignoring message - no active test for chat ${msg.chat.id}`);
+        console.log(`[handleTestResponse] No active test for user ${userId}`);
         return;
     }
 
-    // Vérifier si un message est en cours de traitement
-    if (!acquireLock(msg.chat.id)) {
-        console.log(`Message skipped for chat ${msg.chat.id} - lock active`);
+    if (!acquireLock(userId)) {
+        console.log(`[handleTestResponse] Message skipped for user ${userId} - lock active`);
         return;
     }
 
     try {
-        console.log(`Processing message for chat ${msg.chat.id}: "${msg.text}"`);
-        // Liste des variations acceptables de "next"
         const nextCommands = ['next', 'nex', 'newt', 'nexr', 'nxt', 'n\'est', 'n\'est\'', '\'est'];
+
         if (nextCommands.includes(msg.text.toLowerCase())) {
+            console.log(`[handleTestResponse] Next command received for user ${userId}`);
+
             if (test.currentIndex >= test.words.length) {
-                await finishTest(bot, msg.chat.id);
+                await finishTest(bot, msg.chat.id, userId);
                 return;
             }
 
-            // Nettoyer l'intervalle existant si présent
             if (test.countdownInterval) {
                 clearInterval(test.countdownInterval);
                 test.countdownInterval = null;
@@ -500,25 +550,27 @@ async function handleTestResponse(bot, msg) {
 
             // Générer dynamiquement le prochain mot si c'est un test de vitesse
             if (test.type === 'speed') {
-                console.log('Generating next word for speed test');
+                console.log('[handleTestResponse] Generating next word for speed test');
                 const nextWord = await generateNextTestWord(test);
                 test.words[test.currentIndex] = nextWord;
-                console.log(`Next word set to: ${nextWord}`);
+                console.log(`[handleTestResponse] Next word set to: ${nextWord}`);
             }
 
             const currentWord = test.words[test.currentIndex];
-            const user = db.getUser(msg.chat.id);
+            const user = db.getUser(userId);
+
+            // Ajouter lastQuestionTime lors de l'envoi d'une question
+            test.lastQuestionTime = Date.now();
+            console.log(`[handleTestResponse] Setting lastQuestionTime for user ${userId} to ${test.lastQuestionTime}`);
 
             if (user?.selectedRank && test.type.includes('training')) {
                 const timeAllowed = calculateTimeAllowed(user.selectedRank, currentWord.length);
                 test.timeAllowed = timeAllowed;
 
-                // Start countdown
                 const countdownMsg = await bot.sendMessage(msg.chat.id,
                     `Q/ ${currentWord}\nTemps restant: ${timeAllowed.toFixed(1)}s`
                 );
 
-                // Update countdown
                 const interval = setInterval(async () => {
                     const elapsed = (now() - startTime) / 1000;
                     const remaining = timeAllowed - elapsed;
@@ -531,7 +583,7 @@ async function handleTestResponse(bot, msg) {
                                 { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
                             );
                         } catch (error) {
-                            console.error('Error updating countdown message:', error);
+                            console.error('[handleTestResponse] Error updating countdown message:', error);
                         }
                         test.currentIndex++;
                         await bot.sendMessage(msg.chat.id, "Écrivez 'next' pour continuer.");
@@ -542,30 +594,31 @@ async function handleTestResponse(bot, msg) {
                                 { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
                             );
                         } catch (error) {
-                            console.error('Error updating countdown message:', error);
+                            console.error('[handleTestResponse] Error updating countdown message:', error);
                         }
                     }
                 }, 1000);
 
                 test.countdownInterval = interval;
             } else {
+                console.log(`[handleTestResponse] Sending question to user ${userId}: ${currentWord}`);
                 await bot.sendMessage(msg.chat.id, `Q/ ${currentWord}`);
             }
             return;
         }
 
-        // Clear any existing countdown
-        if (test.countdownInterval) {
-            clearInterval(test.countdownInterval);
-            test.countdownInterval = null;
+        // Si ce n'est pas une commande "next", traiter comme une réponse
+        if (!test.lastQuestionTime) {
+            console.log(`[handleTestResponse] Ignoring response - no active question for user ${userId}`);
+            return;
         }
+
+        console.log(`[handleTestResponse] Processing response for word "${test.words[test.currentIndex]}" from user ${test.username}`);
 
         const currentWord = test.words[test.currentIndex];
         const endTime = now();
         const responseTime = (endTime - test.startTime) / 1000;
         const adjustedTime = responseTime - ((REACTION_TIME_MS + KEY_PRESS_TIME_MS) / 1000);
-
-        console.log(`Processing response for word "${currentWord}" from user ${test.username}`);
 
         const accuracy = typingTest.calculateAccuracy(currentWord, msg.text);
         const wpm = typingTest.calculateWPM(msg.text, adjustedTime);
@@ -575,7 +628,7 @@ async function handleTestResponse(bot, msg) {
             accuracy >= 70;
 
         if (test.type.includes('training')) {
-            const user = db.getUser(msg.chat.id);
+            const user = db.getUser(userId);
             if (user?.selectedRank) {
                 success = test.type.includes('speed') ?
                     wpm >= 20 && responseTime <= test.timeAllowed :
@@ -583,7 +636,7 @@ async function handleTestResponse(bot, msg) {
             }
         }
 
-        db.updateTestResult(msg.chat.id, {
+        db.updateTestResult(userId, {
             word: currentWord,
             response: msg.text,
             time: responseTime,
@@ -608,24 +661,24 @@ ${success ? '✅ Succès!' : '❌ Essayez encore!'}
         await bot.sendMessage(msg.chat.id, resultMessage);
 
         test.currentIndex++;
+        test.lastQuestionTime = null; // Reset lastQuestionTime after processing response
 
         if (test.currentIndex >= test.words.length) {
-            await finishTest(bot, msg.chat.id);
+            await finishTest(bot, msg.chat.id, userId);
         }
     } finally {
-        // Toujours libérer le verrou à la fin
-        releaseLock(msg.chat.id);
+        releaseLock(userId);
     }
 }
 
-async function finishTest(bot, chatId) {
-    const test = db.endTest(chatId);
+async function finishTest(bot, chatId, userId) {
+    const test = db.endTest(userId);
     if (!test) {
-        console.log('No active test found for chat', chatId);
+        console.log('No active test found for user', userId);
         return;
     }
 
-    console.log(`Finishing test for user ${test.username} (${chatId})`);
+    console.log(`Finishing test for user ${test.username} (${userId})`);
     const analysisMsg = await bot.sendMessage(chatId, "𝙰𝙽𝙰𝙻𝚈𝚂𝙴 𝙴𝙽 𝙲𝙾𝚄𝚁𝚂...");
 
     try {
@@ -645,10 +698,8 @@ async function finishTest(bot, chatId) {
         const bestWpm = Math.max(...test.results.map(r => r.wpm));
         const bestAccuracy = Math.max(...test.results.map(r => r.accuracy));
 
-        // Get username from Telegram
-        const chat = await bot.getChat(chatId);
-        const user = await bot.getChatMember(chatId, chatId);
-        const username = user.user.first_name || chat.username || `User_${chatId}`;
+        // Get username from test data
+        const username = test.username;
 
         const stats = {
             wpm: Math.round(avgWpm),
@@ -661,7 +712,7 @@ async function finishTest(bot, chatId) {
         };
 
         // Sauvegarder les stats avec le username
-        db.saveStats(chatId, username, test.type, stats);
+        db.saveStats(userId, username, test.type, stats);
 
         let statsMessage = `🏯 𝐒𝐇𝐈𝐑𝐎 𝐎𝐍𝐈 - 𝔾𝕌ℕ ℙ𝔸ℝ𝕂
 Test ${test.type.includes('speed') ? 'de vitesse' : 'de précision'} terminé!
@@ -687,7 +738,6 @@ Test ${test.type.includes('speed') ? 'de vitesse' : 'de précision'} terminé!
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 Utilisez /training pour continuer l'entraînement`;
-
 
         // Envoyer les stats finales
         await bot.sendMessage(chatId, statsMessage);
