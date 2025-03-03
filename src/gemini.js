@@ -39,37 +39,48 @@ async function generateText() {
 
         // Liste étendue de prompts variés
         const prompts = [
-            // Citations et punchlines d'artistes
-            "Donne une punchline de Damso sans guillemets ni explications, juste la phrase.",
-            "Donne une punchline de Booba sans guillemets ni explications, juste la phrase.",
-            "Donne une punchline de Nekfeu sans guillemets ni explications, juste la phrase.",
-            "Cite un passage marquant d'Oxmo Puccino sans guillemets ni explications.",
+            // Punchlines d'artistes rap/hip-hop français
+            "Donne une punchline de Damso sur le succès sans guillemets ni explications.",
+            "Donne une punchline de Damso sur l'argent sans guillemets ni explications.",
+            "Cite un passage de Damso sur la société sans guillemets ni explications.",
+            "Donne une punchline de Booba sur la réussite sans guillemets ni explications.",
+            "Cite un passage de Booba sur la rue sans guillemets ni explications.",
+            "Donne une punchline de Booba sur le rap game sans guillemets ni explications.",
+            "Cite un passage de Ninho sur l'ambition sans guillemets ni explications.",
+            "Donne une punchline de Ninho sur la famille sans guillemets ni explications.",
+            "Cite un passage de Ninho sur le succès sans guillemets ni explications.",
+            "Donne une punchline de Gims sur la vie sans guillemets ni explications.",
+            "Cite un passage de Gims sur la motivation sans guillemets ni explications.",
+            "Donne une punchline de Gims sur le parcours sans guillemets ni explications.",
+            "Cite un passage de Dadju sur l'amour sans guillemets ni explications.",
+            "Donne une punchline de Dadju sur les relations sans guillemets ni explications.",
+            "Cite un passage de SCH sur la vie de rue sans guillemets ni explications.",
+            "Donne une punchline de Freeze Corleone sur la société sans guillemets ni explications.",
+            "Cite un passage de Laylow sur la solitude sans guillemets ni explications.",
 
-            // Poésie et littérature
-            "Écris un haïku en français sans guillemets ni explications.",
-            "Donne un court passage poétique de Baudelaire sans guillemets ni explications.",
-            "Crée une métaphore originale sur la vie sans guillemets ni explications.",
-            "Écris un vers libre sur la nature sans guillemets ni explications.",
+            // Extraits spécifiques
+            "Cite un extrait de 'Macarena' de Damso sans guillemets ni explications.",
+            "Cite un extrait de 'DLB' de Booba sans guillemets ni explications.",
+            "Cite un extrait de 'Jefe' de Ninho sans guillemets ni explications.",
+            "Cite un extrait de 'Bella' de Gims sans guillemets ni explications.",
+            "Cite un extrait de 'Reine' de Dadju sans guillemets ni explications.",
 
-            // Citations philosophiques et pensées
-            "Donne une citation de philosophe sur l'existence sans guillemets ni explications.",
-            "Exprime une pensée profonde sur le temps qui passe sans guillemets ni explications.",
-            "Formule une réflexion sur la société moderne sans guillemets ni explications.",
+            // Citations et philosophie urbaine
+            "Donne une réflexion sur la vie de rue sans guillemets ni explications.",
+            "Exprime une pensée sur le succès et l'argent sans guillemets ni explications.",
+            "Formule une réflexion sur la loyauté sans guillemets ni explications.",
+            "Donne une citation sur l'ambition et le travail sans guillemets ni explications.",
 
-            // Expressions créatives
-            "Invente une expression surréaliste sans guillemets ni explications.",
-            "Crée une phrase avec des mots composés originaux sans guillemets ni explications.",
-            "Propose une maxime sur la créativité sans guillemets ni explications.",
-
-            // Textes contemporains
-            "Écris une ligne de slam contemporain sans guillemets ni explications.",
-            "Compose une micro-fiction d'une phrase sans guillemets ni explications.",
-            "Crée un aphorisme moderne sur la technologie sans guillemets ni explications.",
+            // Expressions et métaphores urbaines
+            "Crée une métaphore sur la ville sans guillemets ni explications.",
+            "Invente une expression sur la réussite sans guillemets ni explications.",
+            "Compose une phrase sur la force mentale sans guillemets ni explications.",
+            "Crée une image poétique sur la rue sans guillemets ni explications.",
 
             // Variations culturelles
-            "Donne une expression traditionnelle japonaise traduite en français sans explications.",
-            "Propose un proverbe africain traduit en français sans guillemets ni explications.",
-            "Adapte un dicton ancien en version moderne sans guillemets ni explications."
+            "Adapte un proverbe africain en version urbaine sans guillemets ni explications.",
+            "Transforme une sagesse traditionnelle en langage de rue sans guillemets ni explications.",
+            "Modernise un dicton populaire avec une touche rap sans guillemets ni explications."
         ];
 
         const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)];
