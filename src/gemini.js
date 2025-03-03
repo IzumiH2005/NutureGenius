@@ -20,9 +20,10 @@ const MAX_CACHE_SIZE = 1000;
 function cleanResponse(text) {
     return text
         .replace(/["*]/g, '') // Supprime les guillemets et astérisques
-        .replace(/^(voici|je propose|suggestion|exemple|une citation|une phrase|un mot|réponse).*?:/i, '') // Supprime les introductions
+        .replace(/^(voici|je propose|suggestion|exemple|une citation|une phrase|un mot|réponse|citation de|proverbe|adage).*?:/i, '') // Supprime les introductions
         .replace(/^\s*[-•]\s*/, '') // Supprime les puces au début
         .replace(/\s{2,}/g, ' ') // Normalise les espaces
+        .replace(/\(.*?\)/g, '') // Supprime les parenthèses et leur contenu
         .trim();
 }
 
@@ -57,6 +58,28 @@ async function generateText() {
             "Cite un passage de SCH sur la vie de rue sans guillemets ni explications.",
             "Donne une punchline de Freeze Corleone sur la société sans guillemets ni explications.",
             "Cite un passage de Laylow sur la solitude sans guillemets ni explications.",
+
+            // Citations philosophiques
+            "Cite une réflexion de Nietzsche sur la volonté sans guillemets ni explications.",
+            "Donne une citation de Camus sur l'absurde sans guillemets ni explications.",
+            "Cite une pensée de Sartre sur la liberté sans guillemets ni explications.",
+            "Donne une réflexion de Descartes sur la raison sans guillemets ni explications.",
+            "Cite une pensée de Hegel sur la conscience sans guillemets ni explications.",
+            "Donne une citation de Kant sur la morale sans guillemets ni explications.",
+            "Cite une réflexion de Schopenhauer sur la volonté sans guillemets ni explications.",
+            "Donne une pensée de Pascal sur l'existence sans guillemets ni explications.",
+            "Cite une réflexion de Spinoza sur les émotions sans guillemets ni explications.",
+            "Donne une citation de Kierkegaard sur l'angoisse sans guillemets ni explications.",
+
+            // Proverbes et adages
+            "Donne un proverbe chinois sur la sagesse sans guillemets ni explications.",
+            "Cite un proverbe japonais sur le temps sans guillemets ni explications.",
+            "Donne un adage latin sur le destin sans guillemets ni explications.",
+            "Cite un proverbe africain sur la communauté sans guillemets ni explications.",
+            "Donne un dicton traditionnel sur la patience sans guillemets ni explications.",
+            "Cite une maxime sur la vertu sans guillemets ni explications.",
+            "Donne un adage populaire sur le travail sans guillemets ni explications.",
+            "Cite un proverbe sur la persévérance sans guillemets ni explications.",
 
             // Extraits spécifiques
             "Cite un extrait de 'Macarena' de Damso sans guillemets ni explications.",
