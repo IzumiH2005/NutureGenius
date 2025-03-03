@@ -561,6 +561,7 @@ async function handleTestResponse(bot, msg) {
             if (test.currentIndex >= test.words.length) {
                 console.log(`[handleTestResponse] Test already completed for user ${userId}`);
                 await finishTest(bot, msg.chat.id, userId);
+                releaseLock(userId);
                 return;
             }
 
@@ -589,50 +590,59 @@ async function handleTestResponse(bot, msg) {
 
             // Ajouter lastQuestionTime lors de l'envoi d'une question
             test.lastQuestionTime = Date.now();
-            console.log(`[handleTestResponse] Setting lastQuestionTime for user ${userId} to ${test.lastQuestionTime}`);
 
+            let messageSent = false;
             if (user?.selectedRank && test.type.includes('training')) {
                 const timeAllowed = calculateTimeAllowed(user.selectedRank, currentWord.length);
                 test.timeAllowed = timeAllowed;
 
-                const countdownMsg = await bot.sendMessage(msg.chat.id,
-                    `Q/ ${currentWord}\nTemps restant: ${timeAllowed.toFixed(1)}s`
-                );
+                try {
+                    const countdownMsg = await bot.sendMessage(msg.chat.id,
+                        `Q/ ${currentWord}\nTemps restant: ${timeAllowed.toFixed(1)}s`
+                    );
+                    messageSent = true;
 
-                const interval = setInterval(async () => {
-                    const elapsed = (now() - startTime) / 1000;
-                    const remaining = timeAllowed - elapsed;
+                    const interval = setInterval(async () => {
+                        const elapsed = (now() - startTime) / 1000;
+                        const remaining = timeAllowed - elapsed;
 
-                    if (remaining <= 0) {
-                        clearInterval(interval);
-                        test.countdownInterval = null;
-                        try {
-                            await bot.editMessageText(
-                                `Q/ ${currentWord}\nTemps écoulé! ⏰`,
-                                { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
-                            );
-                        } catch (error) {
-                            console.error('[handleTestResponse] Error updating countdown message:', error);
+                        if (remaining <= 0) {
+                            clearInterval(interval);
+                            test.countdownInterval = null;
+                            try {
+                                await bot.editMessageText(
+                                    `Q/ ${currentWord}\nTemps écoulé! ⏰`,
+                                    { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
+                                );
+                            } catch (error) {
+                                console.error('[handleTestResponse] Error updating countdown message:', error);
+                            }
+                            test.currentIndex++;
+                            await bot.sendMessage(msg.chat.id, "Écrivez 'next' pour continuer.");
+                        } else {
+                            try {
+                                await bot.editMessageText(
+                                    `Q/ ${currentWord}\nTemps restant: ${remaining.toFixed(1)}s`,
+                                    { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
+                                );
+                            } catch (error) {
+                                console.error('[handleTestResponse] Error updating countdown message:', error);
+                            }
                         }
-                        test.currentIndex++;
-                        await bot.sendMessage(msg.chat.id, "Écrivez 'next' pour continuer.");
-                    } else {
-                        try {
-                            await bot.editMessageText(
-                                `Q/ ${currentWord}\nTemps restant: ${remaining.toFixed(1)}s`,
-                                { chat_id: msg.chat.id, message_id: countdownMsg.message_id }
-                            );
-                        } catch (error) {
-                            console.error('[handleTestResponse] Error updating countdown message:', error);
-                        }
-                    }
-                }, 1000);
+                    }, 1000);
 
-                test.countdownInterval = interval;
-            } else {
+                    test.countdownInterval = interval;
+                } catch (error) {
+                    console.error('[handleTestResponse] Error sending countdown message:', error);
+                }
+            }
+
+            if (!messageSent) {
                 console.log(`[handleTestResponse] Sending question to user ${userId}: ${currentWord}`);
                 await bot.sendMessage(msg.chat.id, `Q/ ${currentWord}`);
             }
+
+            releaseLock(userId);
             return;
         }
 
@@ -654,25 +664,38 @@ async function handleTestResponse(bot, msg) {
         const wpm = typingTest.calculateWPM(msg.text, adjustedTime);
 
         // Critères de succès révisés
-        let success = false;
-        if (test.type.includes('speed')) {
-            success = wpm >= 20 && accuracy >= 70;
-        } else {
-            success = accuracy >= 70;
-        }
+        let success = true;
+        let message = "✅ Succès!";
 
-        if (test.type.includes('training')) {
-            const user = db.getUser(userId);
-            if (user?.selectedRank) {
-                if (test.type.includes('speed')) {
-                    success = wpm >= 20 && accuracy >= 70 && responseTime <= test.timeAllowed;
-                } else {
-                    success = accuracy >= 70 && responseTime <= test.timeAllowed;
-                }
+        // En mode vitesse
+        if (test.type.includes('speed')) {
+            if (accuracy < 40) {
+                success = false;
+                message = "❌ Essayez encore!";
+            } else if (accuracy < 70) {
+                message = "✅ Succès! (Améliorez votre précision)";
+            }
+            if (wpm < 20) {
+                success = false;
+                message = "❌ Vitesse insuffisante";
+            }
+        } else {
+            // Mode précision
+            if (accuracy < 40) {
+                success = false;
+                message = "❌ Essayez encore!";
+            } else if (accuracy < 70) {
+                message = "✅ Succès! (Améliorez votre précision)";
             }
         }
 
-        // Mettre à jour les résultats avant d'incrémenter l'index
+        // En mode entraînement
+        if (test.type.includes('training') && responseTime > test.timeAllowed) {
+            success = false;
+            message = "❌ Temps dépassé!";
+        }
+
+        // Mettre à jour les résultats
         db.updateTestResult(userId, {
             word: currentWord,
             response: msg.text,
@@ -690,7 +713,7 @@ RÉСУЛТАТЫ :
 ⏱️ Temps total : ${responseTime.toFixed(2)}s
 ⚡ Temps net (sans marges) : ${adjustedTime.toFixed(2)}s
 
-${success ? '✅ Succès!' : '❌ Essayez encore!'}
+${message}
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 Écrivez 'next' pour continuer.`;

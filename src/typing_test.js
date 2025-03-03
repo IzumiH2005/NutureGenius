@@ -9,17 +9,14 @@ const calculateAccuracy = (original, typed) => {
     console.log('Original:', original);
     console.log('Typed:', typed);
 
-    // Fonction de normalisation simplifiée
+    // Fonction de normalisation améliorée
     const normalize = (str) => {
         // Conversion en minuscules
         str = str.toLowerCase();
-
         // Remplacer les accents
         str = str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
         // Supprimer les caractères spéciaux sauf les caractères japonais
         str = str.replace(/[^a-z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g, '');
-
         return str;
     };
 
@@ -29,20 +26,72 @@ const calculateAccuracy = (original, typed) => {
     console.log('Normalisé original:', orig);
     console.log('Normalisé tapé:', type);
 
-    let correct = 0;
-    const length = Math.max(orig.length, type.length);
+    // Séparer en mots
+    const origWords = orig.split(' ');
+    const typeWords = type.split(' ');
 
-    // Compter les caractères corrects
-    for (let i = 0; i < length; i++) {
-        if (orig[i] === type[i]) {
-            correct++;
+    let totalScore = 0;
+    let maxPossibleScore = 0;
+
+    // Analyser chaque mot avec position
+    for (let i = 0; i < Math.max(origWords.length, typeWords.length); i++) {
+        const origWord = origWords[i] || '';
+        const typeWord = typeWords[i] || '';
+        const wordLength = Math.max(origWord.length, typeWord.length);
+
+        // Score maximum possible pour ce mot
+        const wordMaxScore = wordLength * 2; // Doublé pour permettre les bonus
+        maxPossibleScore += wordMaxScore;
+
+        // Score de base pour les caractères corrects
+        let wordScore = 0;
+        const minLength = Math.min(origWord.length, typeWord.length);
+
+        // Vérifier les caractères corrects
+        for (let j = 0; j < minLength; j++) {
+            if (origWord[j] === typeWord[j]) {
+                wordScore += 2; // 2 points pour chaque caractère correct
+            } else if (typeWord.includes(origWord[j])) {
+                wordScore += 1; // 1 point pour caractère présent mais mal placé
+            }
         }
+
+        // Bonus pour mot parfaitement identique
+        if (origWord === typeWord) {
+            wordScore += wordLength; // Bonus égal à la longueur du mot
+        }
+        // Bonus pour préfixe correct (3 caractères ou plus)
+        else {
+            let prefixLength = 0;
+            while (prefixLength < minLength && 
+                   origWord[prefixLength] === typeWord[prefixLength]) {
+                prefixLength++;
+            }
+            if (prefixLength >= 3) {
+                wordScore += prefixLength;
+            }
+        }
+
+        // Pénalité pour différence de longueur
+        const lengthDiff = Math.abs(origWord.length - typeWord.length);
+        wordScore = Math.max(0, wordScore - lengthDiff);
+
+        // Position bonus/malus
+        if (i === 0) {
+            wordScore *= 1.2; // 20% bonus pour le premier mot
+        }
+
+        totalScore += wordScore;
     }
 
-    // Calculer la précision
-    const accuracy = Math.round((correct / length) * 100);
-    console.log('Caractères corrects:', correct);
-    console.log('Longueur totale:', length);
+    // Calculer le pourcentage final
+    let accuracy = Math.round((totalScore / maxPossibleScore) * 100);
+
+    // Limiter entre 0 et 100
+    accuracy = Math.min(100, Math.max(0, accuracy));
+
+    console.log('Score total:', totalScore);
+    console.log('Score maximum possible:', maxPossibleScore);
     console.log('Précision calculée:', accuracy);
 
     return accuracy;
@@ -50,7 +99,6 @@ const calculateAccuracy = (original, typed) => {
 
 const getRankFromStats = (wpm, accuracy, mode = 'precision') => {
     if (mode === 'speed') {
-        // Mode vitesse : uniquement basé sur le WPM
         if (wpm <= 20) return 'D';
         if (wpm <= 30) return 'C';
         if (wpm <= 35) return 'C+';
@@ -64,7 +112,6 @@ const getRankFromStats = (wpm, accuracy, mode = 'precision') => {
         if (wpm <= 75) return 'S+';
         return 'SR';
     } else {
-        // Mode précision : prend en compte vitesse et précision
         if (accuracy < 50) return 'D';
         if (accuracy < 70 || wpm < 20) return 'C';
         if (accuracy < 80 || wpm < 30) return 'B';
